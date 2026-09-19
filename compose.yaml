@@ -1,0 +1,34 @@
+services:
+  app:
+    build:
+      context: .
+    image: crypto-orchestrator:local
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      APP_ENV: "${APP_ENV:-production}"
+      TRADING_DB_PATH: /app/data/trading.db
+      # Keep the deployment paper-only; live execution is not a Compose mode.
+      PAPER_TRADING_ONLY: "true"
+      ACCOUNT_BOOTSTRAP_TOKEN: "${ACCOUNT_BOOTSTRAP_TOKEN:?Set ACCOUNT_BOOTSTRAP_TOKEN in the Compose env file}"
+      CREDENTIAL_ENCRYPTION_KEY: "${CREDENTIAL_ENCRYPTION_KEY:?Set CREDENTIAL_ENCRYPTION_KEY in the Compose env file}"
+      MCP_ALLOWED_HOSTS: "${MCP_ALLOWED_HOSTS:-localhost,localhost:*,127.0.0.1,127.0.0.1:*}"
+      MCP_ALLOWED_ORIGINS: "${MCP_ALLOWED_ORIGINS:-}"
+    volumes:
+      - trading_data:/app/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  trading_data:

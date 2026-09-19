@@ -40,6 +40,31 @@ Crypto Orchestrator is a safety-first foundation for a crypto trading platform. 
 Live exchange execution and model promotion remain disabled. Account creation is available in development; non-development deployments require an `ACCOUNT_BOOTSTRAP_TOKEN`.
 X ingestion is disabled by default; data tools never accept provider credentials as tool parameters.
 
+## Docker Compose
+
+The Compose deployment exposes the API and UI on port `8000`, persists SQLite in a named volume, and pins the container to paper trading.
+
+1. Create a local Compose environment file:
+
+   ```bash
+   cp .env.docker.example .env.compose
+   ```
+
+2. Fill `ACCOUNT_BOOTSTRAP_TOKEN` and `CREDENTIAL_ENCRYPTION_KEY` in `.env.compose`.
+3. Build and start the service:
+
+   ```bash
+   docker compose --env-file .env.compose up --build -d
+   ```
+
+4. Verify the deployment:
+
+   ```bash
+   curl -fsS http://localhost:8000/health
+   ```
+
+Stop the container without deleting its SQLite volume with `docker compose --env-file .env.compose down`.
+
 ## Quick start
 
 ```bash
