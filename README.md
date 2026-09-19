@@ -42,7 +42,7 @@ X ingestion is disabled by default; data tools never accept provider credentials
 
 ## Docker Compose
 
-The Compose deployment exposes the API and UI on port `8000`, persists SQLite in a named volume, and pins the container to paper trading.
+The Compose deployment exposes Nginx on port `8000`, proxies the UI/API/MCP traffic to the internal application container, persists SQLite in a named volume, and pins the container to paper trading.
 
 1. Create a local Compose environment file:
 
@@ -63,7 +63,7 @@ The Compose deployment exposes the API and UI on port `8000`, persists SQLite in
    curl -fsS http://localhost:8000/health
    ```
 
-Stop the container without deleting its SQLite volume with `docker compose --env-file .env.compose down`.
+Set `HTTP_PORT` in `.env.compose` if port `8000` is already in use. Stop the containers without deleting the SQLite volume with `docker compose --env-file .env.compose down`.
 
 ## Quick start
 
