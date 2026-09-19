@@ -9,474 +9,115 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'"
     />
-    <title>Crypto Orchestrator | API connections</title>
+    <title>Trading App | Paper operations desk</title>
     <link rel="icon" href="/logo.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
     <script src="/app.js" defer></script>
   </head>
   <body>
-    <div class="app-shell">
-      <aside class="sidebar">
-        <a class="brand" href="/" aria-label="Crypto Orchestrator home">
-          <img class="brand-mark" src="/logo.svg" alt="" aria-hidden="true" />
-          <span>Crypto Orchestrator</span>
+    <div class="app-frame">
+      <aside class="rail" aria-label="Primary navigation">
+        <a class="brand" href="#overview" data-view="overview" aria-label="Trading App overview">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span class="brand-copy"><strong>trading app</strong><small>paper operations desk</small></span>
         </a>
 
-        <div class="sidebar-intro">
-          <p class="eyebrow">Account control plane</p>
-          <h1>Connect the signal layer without losing control of your secrets.</h1>
-          <p class="muted">
-            One account. One isolated ecosystem. Every provider credential stays behind
-            the account boundary.
-          </p>
-        </div>
+        <div class="rail-mode" aria-label="Trading mode"><span class="pulse-dot"></span><span><strong>paper only</strong><small>live execution locked</small></span></div>
 
-        <ol class="setup-steps">
-          <li>
-            <span class="step-number">01</span>
-            <span>
-              <strong>Register</strong>
-              <small>Create an isolated account workspace.</small>
-            </span>
-          </li>
-          <li>
-            <span class="step-number">02</span>
-            <span>
-              <strong>Connect</strong>
-              <small>Add only the providers you want to use.</small>
-            </span>
-          </li>
-          <li>
-            <span class="step-number">03</span>
-            <span>
-              <strong>Verify</strong>
-              <small>Test Telegram before relying on alerts.</small>
-            </span>
-          </li>
-        </ol>
+        <nav class="primary-nav">
+          <p class="nav-label">Desk</p>
+          <a class="nav-link is-active" href="#overview" data-view="overview"><span class="nav-index">00</span><span>Overview</span></a>
+          <a class="nav-link" href="#intelligence" data-view="intelligence"><span class="nav-index">01</span><span>Intelligence</span></a>
+          <a class="nav-link" href="#strategy" data-view="strategy"><span class="nav-index">02</span><span>Strategy</span></a>
+          <a class="nav-link" href="#operations" data-view="operations"><span class="nav-index">03</span><span>Operations</span></a>
+          <a class="nav-link" href="#automations" data-view="automations"><span class="nav-index">04</span><span>Automations</span></a>
+          <a class="nav-link" href="#memory" data-view="memory"><span class="nav-index">05</span><span>Memory</span></a>
+          <p class="nav-label nav-label-lower">Control</p>
+          <a class="nav-link" href="#settings" data-view="settings"><span class="nav-index">06</span><span>Settings</span></a>
+        </nav>
 
-        <div class="sidebar-footer">
-          <span class="status-dot"></span>
-          <span>Paper trading only</span>
-          <span class="footer-divider">•</span>
-          <span>Secrets encrypted at rest</span>
+        <div class="rail-footer">
+          <a href="/docs" target="_blank" rel="noreferrer" class="rail-docs">API documentation <span>↗</span></a>
+          <div class="rail-account" id="rail-account" hidden><span class="rail-avatar" id="rail-avatar">A</span><span class="rail-account-copy"><strong id="rail-account-name">Account</strong><small id="rail-account-id">acct_••••</small></span><button id="sign-out" class="icon-action" type="button" aria-label="Sign out">↪</button></div>
         </div>
       </aside>
 
-      <main class="main-content">
+      <main class="canvas">
         <header class="topbar">
-          <div>
-            <p class="eyebrow">Workspace setup</p>
-            <h2>API connections</h2>
-            <p class="topbar-subtitle">
-              Give your agents access to trusted market context while keeping execution
-              boundaries explicit.
-            </p>
-          </div>
-          <div class="mode-badge">
-            <span class="mode-dot"></span>
-            <span>Sandbox mode</span>
-          </div>
+          <div class="topbar-context"><button id="mobile-nav-toggle" class="mobile-nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false">☰</button><span class="context-root">trading-app</span><span class="context-slash">/</span><strong id="current-view-label">overview</strong></div>
+          <div class="topbar-tools"><span id="last-sync" class="sync-label">not connected</span><span id="connection-pill" class="connection-pill"><span class="connection-dot"></span><span id="connection-label">offline</span></span></div>
         </header>
 
-        <div id="global-alert" class="alert" role="status" aria-live="polite" hidden></div>
+        <div id="global-alert" class="global-alert" role="status" aria-live="polite" hidden></div>
 
-        <section id="auth-panel" class="auth-section" aria-labelledby="auth-heading">
-          <div class="section-heading">
-            <p class="eyebrow">Start here</p>
-            <h3 id="auth-heading">Create or open an account</h3>
-            <p class="muted">
-              Credentials belong to the authenticated account and are never shared with
-              another user or agent.
-            </p>
-          </div>
-
-          <div class="auth-grid">
-            <form id="register-form" class="panel form-panel">
-              <div class="panel-heading">
-                <div class="panel-icon accent-icon">+</div>
-                <div>
-                  <h4>New account</h4>
-                  <p>Provision a separate ecosystem.</p>
-                </div>
-              </div>
-
-              <label class="field">
-                <span>Account name</span>
-                <input
-                  name="account_name"
-                  type="text"
-                  minlength="1"
-                  maxlength="120"
-                  placeholder="e.g. Research desk"
-                  autocomplete="organization"
-                  required
-                />
-              </label>
-
-              <label class="field">
-                <span>Bootstrap token <em>optional</em></span>
-                <input
-                  name="bootstrap_token"
-                  type="password"
-                  placeholder="Required outside development"
-                  autocomplete="off"
-                />
-                <small class="field-help">
-                  This is the server provisioning token, not an exchange API key.
-                </small>
-              </label>
-
-              <button class="button button-primary" type="submit">
-                Create account
-                <span aria-hidden="true">↗</span>
-              </button>
-            </form>
-
-            <form id="signin-form" class="panel form-panel">
-              <div class="panel-heading">
-                <div class="panel-icon">→</div>
-                <div>
-                  <h4>Existing account</h4>
-                  <p>Use the access token from registration.</p>
-                </div>
-              </div>
-
-              <label class="field">
-                <span>Account access token</span>
-                <input
-                  name="access_token"
-                  type="password"
-                  placeholder="coa_••••••••••••"
-                  autocomplete="current-password"
-                  spellcheck="false"
-                  required
-                />
-                <small class="field-help">
-                  The token authenticates this tab; it is not sent to any provider.
-                </small>
-              </label>
-
-              <button class="button button-secondary" type="submit">
-                Open workspace
-                <span aria-hidden="true">→</span>
-              </button>
-            </form>
-          </div>
+        <section id="auth-panel" class="auth-screen" aria-labelledby="auth-heading">
+          <div class="auth-intro"><div class="hero-mark" aria-hidden="true"><span></span><span></span><span></span></div><p class="eyebrow">A controlled environment for uncertain markets</p><h1 id="auth-heading">Read the room.<br /><em>Respect the guardrails.</em></h1><p class="auth-lede">One place to gather context, test a thesis and learn from every paper operation. The server is the final authority on risk.</p><div class="auth-principles"><span><i>01</i> public market context</span><span><i>02</i> account-scoped state</span><span><i>03</i> no live orders</span></div></div>
+          <div class="auth-forms"><div class="auth-form-heading"><span class="section-kicker">Open the desk</span><h2 id="auth-form-title">Create or open an account</h2><p>Access tokens live in this browser tab only. Secrets are never rendered back from the server.</p></div><div class="auth-form-grid">
+            <form id="register-form" class="surface auth-form"><div class="form-topline"><span class="form-number">01</span><span>new workspace</span></div><h3>Register an account</h3><p class="form-description">Start an isolated account boundary for your desk.</p><label class="field"><span>Account name</span><input name="account_name" type="text" minlength="1" maxlength="120" placeholder="Research desk" autocomplete="organization" required /></label><label class="field"><span>Bootstrap token <small>optional</small></span><input name="bootstrap_token" type="password" placeholder="Required outside development" autocomplete="off" /></label><button class="button button-primary" type="submit">Create account <span aria-hidden="true">↗</span></button></form>
+            <form id="signin-form" class="surface auth-form"><div class="form-topline"><span class="form-number">02</span><span>returning workspace</span></div><h3>Open the desk</h3><p class="form-description">Use the access token issued when the account was created.</p><label class="field"><span>Account access token</span><input name="access_token" type="password" placeholder="coa_••••••••••••" autocomplete="current-password" spellcheck="false" required /></label><div class="form-spacer"></div><button class="button button-secondary" type="submit">Open workspace <span aria-hidden="true">→</span></button></form>
+          </div><p class="auth-footnote"><span class="tiny-check">✓</span> Protected API routes derive the account from your bearer token.</p><div id="registration-token" class="token-box" hidden><div class="token-box-heading"><span>Account access token</span><strong>save it now</strong></div><p>This token is shown only once by the API. The current tab keeps it in session memory.</p><div class="token-value-row"><code id="created-token"></code><button id="copy-token" class="button button-quiet" type="button">Copy token</button></div></div></div>
         </section>
 
-        <section id="workspace" class="workspace-section" aria-labelledby="workspace-heading" hidden>
-          <div class="workspace-header">
-            <div>
-              <p class="eyebrow">Authenticated workspace</p>
-              <h3 id="workspace-heading">Provider credentials</h3>
-              <p class="muted">
-                Save complete credential sets the first time. Later updates can omit stored
-                secrets; the server returns metadata only and never reads secrets back into
-                this UI.
-              </p>
-            </div>
-            <div class="account-chip">
-              <div class="account-avatar" id="account-avatar">A</div>
-              <div>
-                <strong id="account-name">Account</strong>
-                <small id="account-id">acct_••••</small>
-              </div>
-              <button id="sign-out" class="text-button" type="button">Sign out</button>
-            </div>
-          </div>
+        <section id="workspace" hidden>
+          <div class="workspace-header"><div><p class="eyebrow">Authenticated workspace</p><h1 id="workspace-title">The paper desk</h1><p id="workspace-subtitle" class="lede">Context first. Proposal second. The risk engine always gets the last word.</p></div><div class="workspace-flag"><span class="flag-mark">P</span><span><strong>paper only</strong><small>live exchange execution is disabled</small></span></div></div>
 
-          <div id="registration-token" class="token-box workspace-token-box" hidden>
-            <div class="token-box-heading">
-              <span class="token-label">Account access token</span>
-              <span class="warning-label">Save it now</span>
-            </div>
-            <p>
-              This token is shown only at account creation. The current tab keeps it in
-              session memory.
-            </p>
-            <div class="token-value-row">
-              <code id="created-token"></code>
-              <button id="copy-token" class="icon-button" type="button" aria-label="Copy access token">
-                Copy
-              </button>
-            </div>
-          </div>
-
-          <div class="security-strip">
-            <span class="shield-icon" aria-hidden="true">✓</span>
-            <div>
-              <strong>Account-scoped by design</strong>
-              <span>
-                Your agents inherit this account boundary. Telegram is outbound-only and
-                cannot place or modify trades.
-              </span>
-            </div>
-          </div>
-
-          <section class="workflow-lab" aria-labelledby="workflow-heading">
-            <div class="workflow-lab-header">
-              <div>
-                <p class="eyebrow">Agent playbooks</p>
-                <h4 id="workflow-heading">Named workflows</h4>
-                <p class="muted">
-                  Define which context an agent must gather and how it should reason before
-                  and after each operation.
-                </p>
-              </div>
-              <div class="workflow-count">
-                <strong id="workflow-count">0</strong>
-                <span>configured</span>
-              </div>
-            </div>
-
-            <div class="workflow-layout">
-              <form id="workflow-form" class="workflow-editor panel">
-                <div class="workflow-editor-heading">
-                  <div>
-                    <span class="editor-kicker">Workflow editor</span>
-                    <h4 id="workflow-form-title">Create workflow</h4>
-                  </div>
-                  <span id="workflow-form-mode" class="editor-mode">New</span>
-                </div>
-
-                <input id="workflow-id" name="workflow_id" type="hidden" />
-
-                <label class="field">
-                  <span>Workflow name</span>
-                  <input
-                    id="workflow-name"
-                    name="workflow_name"
-                    type="text"
-                    minlength="1"
-                    maxlength="120"
-                    placeholder="e.g. BTC momentum review"
-                    autocomplete="off"
-                    required
-                  />
-                </label>
-
-                <label class="field">
-                  <span>Description <em>optional</em></span>
-                  <textarea
-                    id="workflow-description"
-                    name="workflow_description"
-                    maxlength="2000"
-                    placeholder="What decision should this playbook support?"
-                    rows="3"
-                  ></textarea>
-                </label>
-
-                <label class="toggle-field">
-                  <input id="workflow-enabled" name="workflow_enabled" type="checkbox" checked />
-                  <span>
-                    <strong>Workflow enabled</strong>
-                    <small>Disabled workflows cannot be selected by agents.</small>
-                  </span>
-                </label>
-
-                <div class="phase-editor">
-                  <div class="phase-heading">
-                    <div>
-                      <span class="phase-kicker">Phase 01</span>
-                      <h5>Before operation</h5>
-                    </div>
-                    <span>Gather and assess</span>
-                  </div>
-                  <p class="phase-description">
-                    Queries and instructions the agent must complete before proposing a trade.
-                  </p>
-                  <div id="before-steps" class="step-list" data-phase-steps="before_operation"></div>
-                  <button class="add-step-button" type="button" data-add-step="before_operation">
-                    <span aria-hidden="true">+</span>
-                    Add pre-operation step
-                  </button>
-                </div>
-
-                <div class="phase-editor">
-                  <div class="phase-heading">
-                    <div>
-                      <span class="phase-kicker">Phase 02</span>
-                      <h5>After operation</h5>
-                    </div>
-                    <span>Review and learn</span>
-                  </div>
-                  <p class="phase-description">
-                    Queries and instructions the agent must complete after recording the outcome.
-                  </p>
-                  <div id="after-steps" class="step-list" data-phase-steps="after_operation"></div>
-                  <button class="add-step-button" type="button" data-add-step="after_operation">
-                    <span aria-hidden="true">+</span>
-                    Add post-operation step
-                  </button>
-                </div>
-
-                <div class="workflow-form-actions">
-                  <button id="save-workflow" class="button button-primary" type="submit">
-                    Save workflow
-                  </button>
-                  <button id="reset-workflow" class="text-button" type="button">Clear editor</button>
-                </div>
-              </form>
-
-              <div class="workflow-list-panel panel">
-                <div class="workflow-list-heading">
-                  <div>
-                    <span class="editor-kicker">Account library</span>
-                    <h4>Your workflows</h4>
-                  </div>
-                  <span class="library-lock">Private</span>
-                </div>
-                <div id="workflow-list" class="workflow-list">
-                  <div class="empty-workflows">
-                    <span class="empty-mark" aria-hidden="true">+</span>
-                    <strong>No workflows yet</strong>
-                    <p>Create a named playbook so agents can select it by name.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="workflow-note">
-              <span class="note-mark" aria-hidden="true">i</span>
-              <p>
-                Workflow steps are limited to trusted market, RSS news, pattern and lesson
-                queries plus agent instructions. They cannot execute code, call arbitrary URLs,
-                or bypass server-side risk checks. Use <strong>$context.symbol</strong> and
-                <strong>$context.pattern_id</strong> to reuse a workflow across operations.
-              </p>
+          <section id="view-overview" class="view-panel is-visible" data-view-panel="overview" aria-labelledby="overview-heading">
+            <div class="view-heading"><div><span class="section-kicker">Desk state</span><h2 id="overview-heading">Make the next decision legible.</h2></div><button class="button button-quiet" type="button" data-refresh-workspace>Refresh desk <span>↻</span></button></div>
+            <div class="stat-strip"><div class="stat-cell"><span>Operations</span><strong id="kpi-operations">—</strong><small id="kpi-operations-note">waiting for account data</small></div><div class="stat-cell"><span>Open paper</span><strong id="kpi-open">—</strong><small id="kpi-open-note">no active positions loaded</small></div><div class="stat-cell"><span>Active plans</span><strong id="kpi-plans">—</strong><small id="kpi-plans-note">execution plans</small></div><div class="stat-cell"><span>Candidate lessons</span><strong id="kpi-lessons">—</strong><small id="kpi-lessons-note">memory is empty</small></div><div class="stat-cell stat-health"><span>System</span><strong id="kpi-health">—</strong><small id="kpi-health-note">checking connectors</small></div></div>
+            <div class="overview-grid">
+              <section class="surface health-panel"><div class="panel-heading"><div><span class="section-kicker">Control plane</span><h3>What is available now</h3></div><button class="icon-action" type="button" data-refresh-health aria-label="Refresh health">↻</button></div><div id="health-summary" class="health-summary"><div class="loading-line"></div><div class="loading-line short"></div><div class="loading-line"></div></div><div id="health-errors" class="inline-errors" hidden></div></section>
+              <section class="surface quote-panel"><div class="panel-heading"><div><span class="section-kicker">Fast context</span><h3>Get a market pulse</h3></div><span class="panel-notation">public data</span></div><form id="overview-market-form" class="compact-form"><label class="field"><span>Symbol</span><input name="symbol" value="BTC/USDT" maxlength="40" required /></label><label class="field"><span>Market</span><select name="market_type"><option value="spot">Spot</option><option value="perpetual">Perpetual</option></select></label><label class="field"><span>Timeframe</span><select name="timeframe"><option>1m</option><option selected>15m</option><option>1h</option><option>4h</option><option>1d</option></select></label><button class="button button-primary" type="submit">Read snapshot</button></form><div id="overview-market-result" class="quote-result empty-result"><span>—</span><p>Choose a symbol to bring a fresh snapshot into the desk.</p></div></section>
+              <section class="surface table-panel recent-panel"><div class="panel-heading"><div><span class="section-kicker">Ledger</span><h3>Recent operations</h3></div><button class="text-link" type="button" data-go-view="operations">Open ledger ↗</button></div><div id="overview-operations" class="table-scroll"><div class="empty-state compact"><span class="empty-glyph">◌</span><strong>No operations yet</strong><p>Accepted paper proposals will appear here.</p></div></div></section>
+              <section class="surface next-panel"><div class="panel-heading"><div><span class="section-kicker">A clean loop</span><h3>The desk sequence</h3></div></div><ol class="sequence-list"><li><span>01</span><div><strong>Read</strong><small>Market, derivatives and news context.</small></div></li><li><span>02</span><div><strong>Check</strong><small>Risk, provenance and paper limits.</small></div></li><li><span>03</span><div><strong>Learn</strong><small>Close the loop with an outcome and postmortem.</small></div></li></ol></section>
             </div>
           </section>
 
-          <div class="connections-grid">
-            <form class="connection-card" data-provider-form="binance">
-              <div class="connection-card-top">
-                <div class="provider-identity">
-                  <div class="provider-logo provider-binance">B</div>
-                  <div>
-                    <h4>Binance</h4>
-                    <p>Private connection placeholder</p>
-                  </div>
-                </div>
-                <span class="connection-status" data-status-for="binance">Not configured</span>
-              </div>
+          <section id="view-intelligence" class="view-panel" data-view-panel="intelligence" aria-labelledby="intelligence-heading" hidden>
+            <div class="view-heading"><div><span class="section-kicker">Read-only context</span><h2 id="intelligence-heading">See the market before naming a trade.</h2><p>These connectors provide context only. Each response carries its own source errors and timestamps.</p></div><span class="view-stamp">public feeds / no keys in browser</span></div>
+            <div class="intelligence-grid">
+              <section class="surface command-panel"><div class="panel-heading"><div><span class="section-kicker">Market data</span><h3>Snapshot</h3></div><span class="panel-notation">/market/snapshot</span></div><form id="market-form" class="stack-form"><div class="field-row"><label class="field"><span>Symbol</span><input name="symbol" value="BTC/USDT" required /></label><label class="field"><span>Market type</span><select name="market_type"><option value="spot">Spot</option><option value="perpetual">Perpetual</option></select></label></div><div class="field-row"><label class="field"><span>Timeframe</span><select name="timeframe"><option>1m</option><option selected>15m</option><option>1h</option><option>4h</option><option>1d</option></select></label><label class="field"><span>Candles</span><input name="limit" type="number" min="1" max="500" value="40" /></label></div><button class="button button-primary" type="submit">Fetch snapshot <span>↗</span></button></form><div id="market-output" class="result-block empty-result"><span class="empty-glyph">⌁</span><p>Nothing fetched yet.</p></div></section>
+              <section class="surface command-panel"><div class="panel-heading"><div><span class="section-kicker">Derivatives</span><h3>Positioning</h3></div><span class="panel-notation">/market/positioning</span></div><form id="positioning-form" class="stack-form"><div class="field-row"><label class="field"><span>Symbol</span><input name="symbol" value="BTC/USDT" required /></label><label class="field"><span>Period</span><select name="period"><option>5m</option><option>15m</option><option>1h</option></select></label></div><label class="field"><span>History points</span><input name="limit" type="number" min="1" max="100" value="20" /></label><button class="button button-secondary" type="submit">Read positioning <span>↗</span></button></form><div id="positioning-output" class="result-block empty-result"><span class="empty-glyph">◒</span><p>Aggregate proxies will appear here.</p></div></section>
+              <section class="surface command-panel news-panel"><div class="panel-heading"><div><span class="section-kicker">External signals</span><h3>News desk</h3></div><span class="panel-notation">/news</span></div><form id="news-form" class="stack-form"><div class="field-row"><label class="field"><span>Symbol <small>optional</small></span><input name="symbol" value="BTC/USDT" /></label><label class="field"><span>Lookback</span><select name="lookback_minutes"><option value="60">1 hour</option><option value="360">6 hours</option><option value="1440" selected>24 hours</option><option value="4320">3 days</option></select></label></div><label class="field"><span>Story limit</span><input name="limit" type="number" min="1" max="100" value="20" /></label><button class="button button-secondary" type="submit">Read news <span>↗</span></button></form><div id="news-output" class="result-block empty-result"><span class="empty-glyph">≋</span><p>Configured RSS stories will appear here.</p></div></section>
+              <section class="surface command-panel x-panel"><div class="panel-heading"><div><span class="section-kicker">Legacy connector</span><h3>X signals</h3></div><span class="disabled-badge">disabled by default</span></div><form id="x-form" class="stack-form"><div class="field-row"><label class="field"><span>Symbol <small>optional</small></span><input name="symbol" value="BTC/USDT" /></label><label class="field"><span>Lookback</span><select name="lookback_minutes"><option value="60">1 hour</option><option value="1440" selected>24 hours</option><option value="10080">7 days</option></select></label></div><label class="field"><span>Post limit</span><input name="limit" type="number" min="1" max="100" value="20" /></label><button class="button button-quiet" type="submit">Check connector <span>↗</span></button></form><div id="x-output" class="result-block empty-result"><span class="empty-glyph">×</span><p>The endpoint is available for compatibility, but ingestion is disabled by default.</p></div></section>
+            </div>
+          </section>
 
-              <div class="card-copy">
-                <p>
-                  These credentials are stored per account for the future private adapter.
-                  Market data remains public and read-only; live orders are disabled.
-                </p>
-              </div>
+          <section id="view-strategy" class="view-panel" data-view-panel="strategy" aria-labelledby="strategy-heading" hidden>
+            <div class="view-heading"><div><span class="section-kicker">Runbooks</span><h2 id="strategy-heading">Give a strategy a safe perimeter.</h2><p>Execution plans are paper-only contracts: capital, data sources, symbols and required actions are checked before a run is ready.</p></div><span class="view-stamp">server preflight required</span></div>
+            <div class="strategy-top-grid"><section class="surface plan-library"><div class="panel-heading"><div><span class="section-kicker">Account library</span><h3>Execution plans <span class="count-badge" id="plan-count">0</span></h3></div><button class="button button-quiet" type="button" id="new-plan">New plan</button></div><div id="plan-list" class="resource-list"><div class="empty-state"><span class="empty-glyph">□</span><strong>No execution plans</strong><p>Build the first paper perimeter below.</p></div></div></section><section class="surface plan-run-panel"><div class="panel-heading"><div><span class="section-kicker">Preflight</span><h3>Start a plan run</h3></div><span class="panel-notation">/execution-plans/run</span></div><form id="plan-run-form" class="stack-form"><label class="field"><span>Plan</span><select name="plan_name" id="run-plan-name" required><option value="">Create or select a plan</option></select></label><div class="field-row"><label class="field"><span>Symbol <small>optional</small></span><input name="symbol" placeholder="BTC/USDT" /></label><label class="field"><span>Duration min.</span><input name="duration_minutes" type="number" min="1" placeholder="Plan default" /></label></div><label class="field"><span>Target operations <small>optional</small></span><input name="target_operations" type="number" min="1" placeholder="Plan default" /></label><button class="button button-primary" type="submit">Run preflight <span>↗</span></button></form><div id="plan-run-output" class="result-block empty-result"><span class="empty-glyph">◫</span><p>A run produces the receipt ID needed for strategy evaluation.</p></div></section></div>
+            <section class="surface strategy-evaluator"><div class="panel-heading"><div><span class="section-kicker">Deterministic engine</span><h3>Evaluate or cycle</h3></div><span class="panel-notation">fresh provenance required</span></div><form id="strategy-form" class="strategy-form"><label class="field"><span>Plan</span><select name="plan_name" id="strategy-plan-name" required><option value="">Select a plan</option></select></label><label class="field"><span>Symbol</span><input name="symbol" value="BTC/USDT" required /></label><label class="field"><span>Run receipt</span><input name="execution_plan_run_id" id="strategy-run-id" placeholder="epr_…" required /></label><label class="field"><span>Lookback min.</span><input name="lookback_minutes" type="number" min="1" max="43200" value="1440" /></label><label class="field"><span>Candles</span><input name="candle_limit" type="number" min="30" max="500" value="100" /></label><div class="strategy-actions"><button class="button button-secondary" type="submit" data-strategy-action="evaluate">Evaluate <span>↗</span></button><button class="button button-primary" type="button" id="run-cycle">Evaluate + paper cycle <span>↗</span></button></div></form><div id="strategy-output" class="strategy-output empty-result"><span class="empty-glyph">◇</span><p>Evaluation candidates, rejection reasons and data quality will be shown here.</p></div></section>
+            <section id="plan-editor" class="surface form-surface plan-editor"><div class="panel-heading"><div><span class="section-kicker">Plan editor</span><h3 id="plan-form-title">Create execution plan</h3></div><span id="plan-form-mode" class="mode-badge">new</span></div><form id="plan-form" class="wide-form"><input id="plan-id" name="plan_id" type="hidden" />
+              <div class="form-section"><div class="form-section-heading"><span>Identity</span><small>Name the contract in language an agent can select.</small></div><div class="field-row three"><label class="field"><span>Name</span><input id="plan-name" name="name" maxlength="120" required /></label><label class="field"><span>Strategy version</span><input id="plan-strategy-version" name="strategy_version" value="regime-aware-v1" required /></label><label class="field"><span>Pattern ID</span><input id="plan-pattern-id" name="pattern_id" value="ema_rsi_atr_trend_v1" pattern="[a-z0-9]+(?:_[a-z0-9]+)*" required /></label></div><label class="field"><span>Description <small>optional</small></span><input id="plan-description" name="description" maxlength="2000" /></label><label class="field"><span>Objective</span><textarea id="plan-objective" name="objective" minlength="10" maxlength="2000" rows="2" required>Collect a controlled sample of paper operations for review.</textarea></label></div>
+              <div class="form-section"><div class="form-section-heading"><span>Risk perimeter</span><small>These values must fit both the plan and server limits.</small></div><div class="field-row four"><label class="field"><span>Capital quote</span><input name="capital_quote" type="number" min="0.01" step="any" value="1000" required /></label><label class="field"><span>Max trade notional</span><input name="max_trade_notional_quote" type="number" min="0.01" step="any" value="300" required /></label><label class="field"><span>Risk per trade</span><input name="risk_per_trade_quote" type="number" min="0.01" step="any" value="10" required /></label><label class="field"><span>Max daily loss</span><input name="max_daily_loss_quote" type="number" min="0.01" step="any" value="30" required /></label></div><div class="field-row four"><label class="field"><span>Min net R:R</span><input name="minimum_net_reward_risk_ratio" type="number" min="0" step="any" value="0" required /></label><label class="field"><span>Min signal <small>optional</small></span><input name="minimum_signal_score" type="number" min="0" max="1" step="0.01" placeholder="0.68" /></label><label class="field"><span>Max open operations</span><input name="max_open_operations" type="number" min="1" max="100" value="2" required /></label><label class="field"><span>Duration minutes</span><input name="max_duration_minutes" type="number" min="1" max="10080" value="1440" required /></label></div><div class="field-row three"><label class="field"><span>Target operations</span><input name="target_operations" type="number" min="1" value="10" required /></label><label class="field toggle-field"><input name="exploratory_trades_enabled" type="checkbox" /><span><strong>Allow exploratory tier</strong><small>Uses a separate risk fraction.</small></span></label><label class="field"><span>Exploratory score</span><input name="exploratory_minimum_signal_score" type="number" min="0" max="1" step="0.01" value="0.52" required /></label></div><div class="field-row two"><label class="field"><span>Exploratory risk fraction</span><input name="exploratory_risk_fraction" type="number" min="0.01" max="1" step="0.01" value="0.2" required /></label><label class="field"><span>Status</span><select name="status"><option value="draft">Draft</option><option value="active" selected>Active</option><option value="paused">Paused</option><option value="archived">Archived</option></select></label></div></div>
+              <div class="form-section"><div class="form-section-heading"><span>Market contract</span><small>Only these symbols and sources can satisfy the run.</small></div><div class="field-row four"><label class="field"><span>Symbols <small>comma separated</small></span><input name="symbols" value="BTC/USDT, ETH/USDT" required /></label><label class="field"><span>Market type</span><select name="market_type"><option value="spot">Spot</option><option value="perpetual" selected>Perpetual</option></select></label><label class="field"><span>Timeframe</span><select name="timeframe"><option>1m</option><option selected>15m</option><option>1h</option><option>4h</option><option>1d</option></select></label><fieldset class="choice-field"><legend>Allowed sides</legend><label><input type="checkbox" name="allowed_sides" value="long" checked /> Long</label><label><input type="checkbox" name="allowed_sides" value="short" checked /> Short</label></fieldset></div><fieldset class="choice-field source-choice"><legend>Data sources</legend><label><input type="checkbox" name="data_sources" value="binance_public" checked /> Public market</label><label><input type="checkbox" name="data_sources" value="binance_derivatives" /> Derivatives</label><label><input type="checkbox" name="data_sources" value="rss" checked /> RSS news</label></fieldset><div class="field-row two"><label class="field"><span>Before workflow <small>optional</small></span><select name="before_workflow_name" id="plan-before-workflow"><option value="">None</option></select></label><label class="field"><span>After workflow <small>optional</small></span><select name="after_workflow_name" id="plan-after-workflow"><option value="">None</option></select></label></div></div>
+              <div class="form-section rules-section"><div class="form-section-heading"><span>Rules and steps</span><small>One rule per line. The agent decision step is mandatory.</small></div><div class="field-row three"><label class="field"><span>Entry rules</span><textarea name="entry_rules" rows="4" required>Require fresh context and a confirmed setup.</textarea></label><label class="field"><span>Exit rules</span><textarea name="exit_rules" rows="4" required>Use the hard stop, target and maximum holding time.</textarea></label><label class="field"><span>Risk rules</span><textarea name="risk_rules" rows="4" required>Never exceed the plan risk budget or server limits.</textarea></label></div><div class="field-row two"><label class="field"><span>Evaluation metrics</span><input name="evaluation_metrics" value="net_expectancy, profit_factor, max_drawdown" required /></label><span></span></div><div id="plan-steps" class="plan-steps"></div><button class="add-row-button" type="button" id="add-plan-step">+ Add plan step</button></div><div class="form-actions"><button class="button button-primary" type="submit" id="save-plan">Save plan</button><button class="button button-quiet" type="button" id="reset-plan">Clear editor</button></div>
+            </form></section>
+          </section>
 
-              <label class="field">
-                <span>API key</span>
-                <input
-                  data-credential="api_key"
-                  type="password"
-                  placeholder="Binance API key"
-                  autocomplete="off"
-                  spellcheck="false"
-                  required
-                />
-              </label>
+          <section id="view-operations" class="view-panel" data-view-panel="operations" aria-labelledby="operations-heading" hidden>
+            <div class="view-heading"><div><span class="section-kicker">Paper ledger</span><h2 id="operations-heading">Every proposal leaves a receipt.</h2><p>Create, risk-check, execute, close and review operations without leaving the account boundary.</p></div><button class="button button-primary" type="button" id="new-operation">New proposal <span>+</span></button></div>
+            <div class="operation-layout"><section class="surface table-panel operation-list-panel"><div class="panel-heading"><div><span class="section-kicker">Account operations</span><h3>Ledger <span id="operation-count" class="count-badge">0</span></h3></div><button class="icon-action" type="button" data-refresh-operations aria-label="Refresh operations">↻</button></div><div id="operation-list" class="table-scroll"><div class="empty-state"><span class="empty-glyph">◌</span><strong>No proposals yet</strong><p>Build a complete thesis to create the first one.</p></div></div></section><section class="surface operation-detail-panel"><div class="panel-heading"><div><span class="section-kicker">Selected record</span><h3 id="operation-detail-title">Choose an operation</h3></div><span id="operation-detail-status" class="status-badge">—</span></div><div id="operation-detail" class="detail-content"><div class="empty-state"><span class="empty-glyph">↳</span><strong>Nothing selected</strong><p>Select a row to inspect the thesis and available next action.</p></div></div></section></div>
+            <section id="proposal-editor" class="surface form-surface proposal-editor" hidden><div class="panel-heading"><div><span class="section-kicker">Proposal builder</span><h3>Create paper proposal</h3></div><span class="mode-badge">risk checked server-side</span></div><form id="proposal-form" class="wide-form"><div class="form-section"><div class="form-section-heading"><span>Identity and binding</span><small>Idempotency prevents duplicate proposals.</small></div><div class="field-row four"><label class="field"><span>Idempotency key</span><input name="idempotency_key" required /></label><label class="field"><span>Agent ID</span><input name="agent_id" value="operator-ui" required /></label><label class="field"><span>Model version</span><input name="model_version" value="human-review" required /></label><label class="field"><span>Strategy version</span><input name="strategy_version" value="manual-paper-v1" required /></label></div><div class="field-row four"><label class="field"><span>Workflow <small>optional</small></span><select name="workflow_name" id="proposal-workflow"><option value="">None</option></select></label><label class="field"><span>Execution plan <small>optional</small></span><select name="execution_plan_name" id="proposal-plan"><option value="">Global risk only</option></select></label><label class="field"><span>Signal tier</span><select name="signal_tier"><option value="core">Core</option><option value="exploratory">Exploratory</option></select></label><label class="field"><span>Signal score</span><input name="signal_score" type="number" min="0" max="1" step="0.01" value="0.7" required /></label></div></div><div class="form-section"><div class="form-section-heading"><span>Market context</span><small>Use the exact context the thesis was based on.</small></div><div class="field-row six"><label class="field"><span>Venue</span><input name="venue" value="paper" required /></label><label class="field"><span>Symbol</span><input name="symbol" value="BTC/USDT" required /></label><label class="field"><span>Market</span><select name="market_type"><option value="spot">Spot</option><option value="perpetual" selected>Perpetual</option></select></label><label class="field"><span>Timeframe</span><input name="timeframe" value="15m" required /></label><label class="field"><span>Side</span><select name="side"><option value="long">Long</option><option value="short">Short</option></select></label><label class="field"><span>Regime</span><input name="market_regime" value="trend" required /></label></div></div><div class="form-section"><div class="form-section-heading"><span>Thesis</span><small>Evidence and invalidation keep the proposal reviewable.</small></div><label class="field"><span>Summary</span><textarea name="thesis_summary" minlength="10" rows="2" required>Price and context support a controlled paper test.</textarea></label><div class="field-row three"><label class="field"><span>Expected horizon min.</span><input name="expected_horizon_minutes" type="number" min="1" value="180" required /></label><label class="field"><span>Confidence</span><input name="confidence" type="number" min="0" max="1" step="0.01" value="0.64" required /></label><label class="field"><span>Scope <small>key=value, comma separated</small></span><input name="scope" value="asset=BTC, timeframe=15m" /></label></div><div class="field-row two"><label class="field"><span>Assumptions <small>one per line</small></span><textarea name="assumptions" rows="3">Liquidity remains available.</textarea></label><label class="field"><span>Invalidation conditions <small>one per line</small></span><textarea name="invalidation_conditions" rows="3" required>Close beyond the thesis invalidation level.</textarea></label></div><div class="evidence-row"><label class="field"><span>Evidence source</span><input name="evidence_source" value="market" required /></label><label class="field"><span>Reference</span><input name="evidence_reference" value="operator-observation" required /></label><label class="field"><span>Feature</span><input name="evidence_feature" value="context_alignment" required /></label><label class="field"><span>Value</span><input name="evidence_value" value="confirmed" required /></label><label class="field"><span>Weight</span><input name="evidence_weight" type="number" min="-1" max="1" step="0.01" value="0.8" required /></label></div></div><div class="form-section"><div class="form-section-heading"><span>Position and exit</span><small>The server builds a default exit policy from stop and target.</small></div><div class="field-row six"><label class="field"><span>Quantity</span><input name="quantity" type="number" min="0.00000001" step="any" value="0.01" required /></label><label class="field"><span>Entry price</span><input name="entry_price" type="number" min="0.00000001" step="any" value="60000" required /></label><label class="field"><span>Stop price</span><input name="stop_loss_price" type="number" min="0.00000001" step="any" value="59400" required /></label><label class="field"><span>Target price <small>optional</small></span><input name="take_profit_price" type="number" min="0.00000001" step="any" value="61200" /></label><label class="field"><span>Leverage</span><input name="leverage" type="number" min="1" step="any" value="1" required /></label><label class="field"><span>Max loss quote</span><input name="max_loss_quote" type="number" min="0.01" step="any" value="8" required /></label></div><div id="pattern-rows" class="pattern-rows"></div><button class="add-row-button" type="button" id="add-pattern">+ Add pattern hypothesis</button></div><div class="form-actions"><button class="button button-quiet" type="button" id="check-risk">Check risk</button><button class="button button-primary" type="submit" id="create-proposal">Create proposal</button><button class="button button-quiet" type="button" id="cancel-proposal">Cancel</button></div><div id="risk-output" class="inline-result" hidden></div></form></section>
+            <section id="outcome-editor" class="surface form-surface outcome-editor" hidden><div class="panel-heading"><div><span class="section-kicker">Close paper operation</span><h3>Record outcome</h3></div><span class="mode-badge">costs are simulated</span></div><form id="outcome-form" class="wide-form"><input name="operation_id" type="hidden" /><div class="field-row five"><label class="field"><span>Exit price</span><input name="exit_price" type="number" min="0.00000001" step="any" required /></label><label class="field"><span>Fees quote</span><input name="fees_quote" type="number" min="0" step="any" value="0" /></label><label class="field"><span>Slippage quote</span><input name="slippage_quote" type="number" min="0" step="any" value="0" /></label><label class="field"><span>Funding quote</span><input name="funding_quote" type="number" step="any" value="0" /></label><label class="field"><span>Exit reason</span><input name="exit_reason" value="manual_review" required /></label></div><div class="field-row two"><label class="field"><span>Forced status <small>only operational/data cases</small></span><select name="forced_status"><option value="">Use calculated result</option><option value="liquidated">Liquidated</option><option value="execution_error">Execution error</option><option value="data_error">Data error</option><option value="risk_blocked">Risk blocked</option></select></label><span></span></div><div class="form-actions"><button class="button button-primary" type="submit">Close operation</button><button class="button button-quiet" type="button" data-close-editor="outcome-editor">Cancel</button></div></form></section>
+            <section id="postmortem-editor" class="surface form-surface postmortem-editor" hidden><div class="panel-heading"><div><span class="section-kicker">Close the loop</span><h3>Write a postmortem</h3></div><span class="mode-badge">candidate lesson</span></div><form id="postmortem-form" class="wide-form"><input name="operation_id" type="hidden" /><div class="field-row two"><label class="field"><span>What worked <small>one per line</small></span><textarea name="what_worked" rows="3"></textarea></label><label class="field"><span>What failed <small>one per line</small></span><textarea name="what_failed" rows="3"></textarea></label></div><div class="field-row three"><label class="field"><span>Failure category</span><select name="failure_category"><option value="unknown">Unknown</option><option value="false_signal">False signal</option><option value="market_regime_mismatch">Market regime mismatch</option><option value="insufficient_confirmation">Insufficient confirmation</option><option value="data_quality">Data quality</option><option value="execution">Execution</option><option value="latency">Latency</option><option value="risk_management">Risk management</option><option value="external_event">External event</option><option value="agent_process">Agent process</option></select></label><label class="field"><span>Confidence</span><input name="confidence" type="number" min="0" max="1" step="0.01" value="0.7" required /></label><label class="field"><span>Pattern verdict</span><select name="pattern_status"><option value="uncertain">Uncertain</option><option value="confirmed">Confirmed</option><option value="rejected">Rejected</option><option value="suspected">Suspected</option><option value="mixed">Mixed</option></select></label></div><div class="field-row two"><label class="field"><span>Failure explanation</span><textarea name="failure_explanation" rows="3" minlength="3" required>The result needs a review against the original thesis.</textarea></label><label class="field"><span>Counterfactual</span><textarea name="counterfactual" rows="3" minlength="3" required>Wait for stronger confirmation before repeating the setup.</textarea></label></div><div class="field-row two"><label class="field"><span>Proposed lesson</span><textarea name="proposed_lesson" rows="3" minlength="10" required>Record the evidence threshold that should be checked before the next paper proposal.</textarea></label><label class="field"><span>Pattern explanation</span><textarea name="pattern_explanation" rows="3" minlength="3" required>The setup was present but needs more confirmation.</textarea></label></div><div class="form-actions"><button class="button button-primary" type="submit">Save postmortem</button><button class="button button-quiet" type="button" data-close-editor="postmortem-editor">Cancel</button></div></form></section>
+          </section>
 
-              <label class="field">
-                <span>API secret</span>
-                <input
-                  data-credential="api_secret"
-                  type="password"
-                  placeholder="Binance API secret"
-                  autocomplete="off"
-                  spellcheck="false"
-                  required
-                />
-              </label>
+          <section id="view-automations" class="view-panel" data-view-panel="automations" aria-labelledby="automations-heading" hidden>
+            <div class="view-heading"><div><span class="section-kicker">Agent playbooks</span><h2 id="automations-heading">Make preparation repeatable.</h2><p>Named workflows gather allowlisted context before and after an operation. They cannot run code or bypass risk.</p></div><span class="view-stamp">allowlisted queries only</span></div>
+            <div class="automation-grid"><section class="surface workflow-library"><div class="panel-heading"><div><span class="section-kicker">Account library</span><h3>Workflows <span id="workflow-count" class="count-badge">0</span></h3></div><button class="button button-quiet" type="button" id="new-workflow">New workflow</button></div><div id="workflow-list" class="resource-list"><div class="empty-state"><span class="empty-glyph">□</span><strong>No workflows yet</strong><p>Create a playbook so agents can select it by name.</p></div></div></section><section class="surface workflow-run-panel"><div class="panel-heading"><div><span class="section-kicker">Run a phase</span><h3>Execute a workflow</h3></div><span class="panel-notation">/workflows/run</span></div><form id="workflow-run-form" class="stack-form"><label class="field"><span>Workflow</span><select name="workflow_name" id="run-workflow-name" required><option value="">Select a workflow</option></select></label><label class="field"><span>Phase</span><select name="phase"><option value="before_operation">Before operation</option><option value="after_operation">After operation</option></select></label><div class="field-row two"><label class="field"><span>Symbol <small>optional</small></span><input name="symbol" placeholder="BTC/USDT" /></label><label class="field"><span>Pattern <small>optional</small></span><input name="pattern_id" placeholder="momentum_breakout" /></label></div><div class="field-row two"><label class="field"><span>Operation ID <small>after phase only</small></span><input name="operation_id" placeholder="op_…" /></label><label class="field"><span>Plan receipt <small>optional</small></span><input name="execution_plan_run_id" placeholder="epr_…" /></label></div><button class="button button-primary" type="submit">Run workflow <span>↗</span></button></form><div id="workflow-run-output" class="result-block empty-result"><span class="empty-glyph">▷</span><p>Run results and step-level errors appear here.</p></div></section></div>
+            <section class="surface form-surface workflow-editor"><div class="panel-heading"><div><span class="section-kicker">Workflow editor</span><h3 id="workflow-form-title">Create workflow</h3></div><span id="workflow-form-mode" class="mode-badge">new</span></div><form id="workflow-form" class="wide-form"><input id="workflow-id" name="workflow_id" type="hidden" /><div class="field-row two"><label class="field"><span>Name</span><input id="workflow-name" name="workflow_name" maxlength="120" required /></label><label class="field"><span>Description <small>optional</small></span><input id="workflow-description" name="workflow_description" maxlength="2000" /></label></div><label class="toggle-field"><input id="workflow-enabled" name="workflow_enabled" type="checkbox" checked /><span><strong>Workflow enabled</strong><small>Disabled workflows cannot be selected by agents.</small></span></label><div class="phase-grid"><div class="phase-editor"><div class="phase-title"><span>Phase 01</span><h4>Before operation</h4></div><p>Gather and assess before proposing.</p><div id="before-steps" class="step-list" data-phase-steps="before_operation"></div><button class="add-row-button" type="button" data-add-step="before_operation">+ Add pre-operation step</button></div><div class="phase-editor"><div class="phase-title"><span>Phase 02</span><h4>After operation</h4></div><p>Review and learn after recording the result.</p><div id="after-steps" class="step-list" data-phase-steps="after_operation"></div><button class="add-row-button" type="button" data-add-step="after_operation">+ Add post-operation step</button></div></div><div class="form-actions"><button class="button button-primary" type="submit" id="save-workflow">Save workflow</button><button class="button button-quiet" type="button" id="reset-workflow">Clear editor</button></div></form></section>
+          </section>
 
-              <div class="card-actions">
-                <button class="button button-primary" type="submit">Save Binance credentials</button>
-                <button
-                  class="text-button danger-button"
-                  type="button"
-                  data-delete-provider="binance"
-                  hidden
-                >
-                  Remove
-                </button>
-              </div>
-            </form>
+          <section id="view-memory" class="view-panel" data-view-panel="memory" aria-labelledby="memory-heading" hidden>
+            <div class="view-heading"><div><span class="section-kicker">Research memory</span><h2 id="memory-heading">Treat the past as evidence, not prophecy.</h2><p>Pattern context and lessons are candidate observations. They sharpen review; they never become an automatic rule.</p></div><span class="view-stamp">account-scoped history</span></div><div class="memory-grid"><section class="surface memory-query"><div class="panel-heading"><div><span class="section-kicker">Pattern context</span><h3>Compare cases</h3></div><span class="panel-notation">/patterns/{id}/context</span></div><form id="pattern-form" class="stack-form"><div class="field-row two"><label class="field"><span>Pattern ID</span><input name="pattern_id" value="momentum_breakout" required /></label><label class="field"><span>Symbol <small>optional</small></span><input name="symbol" value="BTC/USDT" /></label></div><div class="field-row three"><label class="field"><span>Market <small>optional</small></span><select name="market_type"><option value="">Any</option><option value="spot">Spot</option><option value="perpetual">Perpetual</option></select></label><label class="field"><span>Side <small>optional</small></span><select name="side"><option value="">Any</option><option value="long">Long</option><option value="short">Short</option></select></label><label class="field"><span>Case limit</span><input name="limit" type="number" min="1" max="500" value="50" /></label></div><button class="button button-secondary" type="submit">Read context <span>↗</span></button></form><div id="pattern-output" class="result-block empty-result"><span class="empty-glyph">⌁</span><p>Pattern outcomes and candidate lessons appear here.</p></div></section><section class="surface memory-query"><div class="panel-heading"><div><span class="section-kicker">Candidate lessons</span><h3>Search lessons</h3></div><span class="panel-notation">/lessons</span></div><form id="lessons-form" class="stack-form"><div class="field-row two"><label class="field"><span>Pattern <small>optional</small></span><input name="pattern_id" value="momentum_breakout" /></label><label class="field"><span>Symbol <small>optional</small></span><input name="symbol" value="BTC/USDT" /></label></div><div class="field-row three"><label class="field"><span>Market <small>optional</small></span><select name="market_type"><option value="">Any</option><option value="spot">Spot</option><option value="perpetual">Perpetual</option></select></label><label class="field"><span>Side <small>optional</small></span><select name="side"><option value="">Any</option><option value="long">Long</option><option value="short">Short</option></select></label><label class="field"><span>Limit</span><input name="limit" type="number" min="1" max="500" value="100" /></label></div><button class="button button-secondary" type="submit">Search lessons <span>↗</span></button></form><div id="lessons-output" class="result-block empty-result"><span class="empty-glyph">≡</span><p>Candidate lessons are created by postmortems.</p></div></section></div>
+          </section>
 
-            <form class="connection-card featured-card" data-provider-form="telegram">
-              <div class="connection-card-top">
-                <div class="provider-identity">
-                  <div class="provider-logo provider-telegram">↗</div>
-                  <div>
-                    <h4>Telegram</h4>
-                    <p>Operations, results and conclusions</p>
-                  </div>
-                </div>
-                <span class="connection-status" data-status-for="telegram">Not configured</span>
-              </div>
-
-              <div class="card-copy">
-                <p>
-                  Create a bot with BotFather, add it to the target chat, then provide the
-                  chat ID. Multiple chat IDs can be separated by commas. After the first
-                  save, leave the bot token blank when adding or changing chats.
-                </p>
-              </div>
-
-              <label class="field">
-                <span>Bot token <em>required on first save</em></span>
-                <input
-                  data-credential="bot_token"
-                  type="password"
-                  placeholder="123456:ABC••••"
-                  autocomplete="off"
-                  spellcheck="false"
-                  required
-                />
-              </label>
-
-              <label class="field">
-                <span>Chat IDs</span>
-                <input
-                  data-credential="chat_ids"
-                  type="text"
-                  placeholder="-1001234567890, 987654321"
-                  autocomplete="off"
-                  spellcheck="false"
-                  required
-                />
-              </label>
-
-              <div class="card-actions">
-                <button class="button button-primary" type="submit">Save Telegram credentials</button>
-                <button id="test-telegram" class="button button-outline" type="button" disabled>
-                  Send test
-                </button>
-                <button class="text-button danger-button" type="button" data-delete-provider="telegram" hidden>
-                  Remove
-                </button>
-              </div>
-            </form>
-          </div>
-
-          <div class="workspace-note">
-            <span class="note-mark" aria-hidden="true">i</span>
-            <p>
-              Saving merges the fields you submit with the provider values already stored
-              securely. RSS is the primary free news source, public Binance market data is
-              enabled, and X ingestion is disabled by default.
-            </p>
-          </div>
+          <section id="view-settings" class="view-panel" data-view-panel="settings" aria-labelledby="settings-heading" hidden>
+            <div class="view-heading"><div><span class="section-kicker">Account control</span><h2 id="settings-heading">Keep the boundary clean.</h2><p>Provider credentials are encrypted at rest and returned only as metadata. The browser never receives stored secrets.</p></div><span class="view-stamp">session-scoped token</span></div><div class="settings-grid"><section class="surface account-panel"><div class="panel-heading"><div><span class="section-kicker">Identity</span><h3>Account</h3></div><span class="status-badge status-good">authenticated</span></div><div class="account-large"><span class="large-avatar" id="account-avatar">A</span><div><strong id="account-name">Account</strong><code id="account-id">acct_••••</code><small id="account-created">Created —</small></div></div><div class="security-note"><span>✓</span><p>Account-scoped API and MCP state. The access token is stored in <code>sessionStorage</code> and removed when you sign out.</p></div></section><section class="surface security-panel"><div class="panel-heading"><div><span class="section-kicker">Boundary</span><h3>Safety posture</h3></div></div><ul class="safety-list"><li><span class="safety-icon lime">P</span><div><strong>Paper trading only</strong><small>Live exchange execution remains disabled.</small></div></li><li><span class="safety-icon cyan">↗</span><div><strong>Server-side risk</strong><small>Every proposal is checked against account and plan limits.</small></div></li><li><span class="safety-icon amber">⌁</span><div><strong>Secrets stay opaque</strong><small>Credential reads return provider and update time only.</small></div></li></ul></section></div><div class="connections-grid"><section class="surface credential-card" data-provider-form="binance"><div class="connection-heading"><div><span class="provider-mark binance-mark">B</span><div><span class="section-kicker">Private adapter placeholder</span><h3>Binance</h3></div></div><span class="connection-status" data-status-for="binance">not configured</span></div><p>Credentials are stored for the future private adapter. Market data remains public and read-only; live orders are disabled.</p><label class="field"><span>API key</span><input data-credential="api_key" type="password" autocomplete="off" spellcheck="false" /></label><label class="field"><span>API secret</span><input data-credential="api_secret" type="password" autocomplete="off" spellcheck="false" /></label><div class="card-actions"><button class="button button-secondary" type="submit">Save Binance credentials</button><button class="text-link danger-link" type="button" data-delete-provider="binance" hidden>Remove</button></div></section><section class="surface credential-card featured-credential" data-provider-form="telegram"><div class="connection-heading"><div><span class="provider-mark telegram-mark">↗</span><div><span class="section-kicker">Outbound notifications</span><h3>Telegram</h3></div></div><span class="connection-status" data-status-for="telegram">not configured</span></div><p>Send paper opens, outcomes and postmortem conclusions to one or more chats.</p><label class="field"><span>Bot token <small>required on first save</small></span><input data-credential="bot_token" type="password" autocomplete="off" spellcheck="false" /></label><label class="field"><span>Chat IDs <small>comma separated</small></span><input data-credential="chat_ids" type="text" autocomplete="off" /></label><div class="card-actions"><button class="button button-primary" type="submit">Save Telegram</button><button class="button button-quiet" id="test-telegram" type="button" disabled>Send test</button><button class="text-link danger-link" type="button" data-delete-provider="telegram" hidden>Remove</button></div></section></div><div class="settings-note"><span class="note-mark">i</span><p>RSS is the primary free news source. X ingestion is disabled by default. Provider credentials are never accepted as tool parameters and cannot be used to bypass the account boundary.</p></div>
+          </section>
         </section>
 
-        <footer class="page-footer">
-          <span>Crypto Orchestrator</span>
-          <span>•</span>
-          <span>Safety-first paper trading foundation</span>
-          <a href="/docs" target="_blank" rel="noreferrer">API docs ↗</a>
-        </footer>
+        <footer class="page-footer"><span>trading app</span><span class="footer-rule"></span><span>controlled paper operations</span><a href="/docs" target="_blank" rel="noreferrer">OpenAPI docs ↗</a></footer>
       </main>
     </div>
   </body>
