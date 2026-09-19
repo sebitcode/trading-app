@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'"
+    />
+    <title>Crypto Orchestrator | API connections</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="/" aria-label="Crypto Orchestrator home">
+          <span class="brand-mark" aria-hidden="true">CO</span>
+          <span>Crypto Orchestrator</span>
+        </a>
+
+        <div class="sidebar-intro">
+          <p class="eyebrow">Account control plane</p>
+          <h1>Connect the signal layer without losing control of your secrets.</h1>
+          <p class="muted">
+            One account. One isolated ecosystem. Every provider credential stays behind
+            the account boundary.
+          </p>
+        </div>
+
+        <ol class="setup-steps">
+          <li>
+            <span class="step-number">01</span>
+            <span>
+              <strong>Register</strong>
+              <small>Create an isolated account workspace.</small>
+            </span>
+          </li>
+          <li>
+            <span class="step-number">02</span>
+            <span>
+              <strong>Connect</strong>
+              <small>Add only the providers you want to use.</small>
+            </span>
+          </li>
+          <li>
+            <span class="step-number">03</span>
+            <span>
+              <strong>Verify</strong>
+              <small>Test Telegram before relying on alerts.</small>
+            </span>
+          </li>
+        </ol>
+
+        <div class="sidebar-footer">
+          <span class="status-dot"></span>
+          <span>Paper trading only</span>
+          <span class="footer-divider">•</span>
+          <span>Secrets encrypted at rest</span>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Workspace setup</p>
+            <h2>API connections</h2>
+            <p class="topbar-subtitle">
+              Give your agents access to trusted market context while keeping execution
+              boundaries explicit.
+            </p>
+          </div>
+          <div class="mode-badge">
+            <span class="mode-dot"></span>
+            <span>Sandbox mode</span>
+          </div>
+        </header>
+
+        <div id="global-alert" class="alert" role="status" aria-live="polite" hidden></div>
+
+        <section id="auth-panel" class="auth-section" aria-labelledby="auth-heading">
+          <div class="section-heading">
+            <p class="eyebrow">Start here</p>
+            <h3 id="auth-heading">Create or open an account</h3>
+            <p class="muted">
+              Credentials belong to the authenticated account and are never shared with
+              another user or agent.
+            </p>
+          </div>
+
+          <div class="auth-grid">
+            <form id="register-form" class="panel form-panel">
+              <div class="panel-heading">
+                <div class="panel-icon accent-icon">+</div>
+                <div>
+                  <h4>New account</h4>
+                  <p>Provision a separate ecosystem.</p>
+                </div>
+              </div>
+
+              <label class="field">
+                <span>Account name</span>
+                <input
+                  name="account_name"
+                  type="text"
+                  minlength="1"
+                  maxlength="120"
+                  placeholder="e.g. Research desk"
+                  autocomplete="organization"
+                  required
+                />
+              </label>
+
+              <label class="field">
+                <span>Bootstrap token <em>optional</em></span>
+                <input
+                  name="bootstrap_token"
+                  type="password"
+                  placeholder="Required outside development"
+                  autocomplete="off"
+                />
+                <small class="field-help">
+                  This is the server provisioning token, not an exchange API key.
+                </small>
+              </label>
+
+              <button class="button button-primary" type="submit">
+                Create account
+                <span aria-hidden="true">↗</span>
+              </button>
+            </form>
+
+            <form id="signin-form" class="panel form-panel">
+              <div class="panel-heading">
+                <div class="panel-icon">→</div>
+                <div>
+                  <h4>Existing account</h4>
+                  <p>Use the access token from registration.</p>
+                </div>
+              </div>
+
+              <label class="field">
+                <span>Account access token</span>
+                <input
+                  name="access_token"
+                  type="password"
+                  placeholder="coa_••••••••••••"
+                  autocomplete="current-password"
+                  spellcheck="false"
+                  required
+                />
+                <small class="field-help">
+                  The token authenticates this tab; it is not sent to any provider.
+                </small>
+              </label>
+
+              <button class="button button-secondary" type="submit">
+                Open workspace
+                <span aria-hidden="true">→</span>
+              </button>
+            </form>
+          </div>
+        </section>
+
+        <section id="workspace" class="workspace-section" aria-labelledby="workspace-heading" hidden>
+          <div class="workspace-header">
+            <div>
+              <p class="eyebrow">Authenticated workspace</p>
+              <h3 id="workspace-heading">Provider credentials</h3>
+              <p class="muted">
+                Save complete credential sets the first time. Later updates can omit stored
+                secrets; the server returns metadata only and never reads secrets back into
+                this UI.
+              </p>
+            </div>
+            <div class="account-chip">
+              <div class="account-avatar" id="account-avatar">A</div>
+              <div>
+                <strong id="account-name">Account</strong>
+                <small id="account-id">acct_••••</small>
+              </div>
+              <button id="sign-out" class="text-button" type="button">Sign out</button>
+            </div>
+          </div>
+
+          <div id="registration-token" class="token-box workspace-token-box" hidden>
+            <div class="token-box-heading">
+              <span class="token-label">Account access token</span>
+              <span class="warning-label">Save it now</span>
+            </div>
+            <p>
+              This token is shown only at account creation. The current tab keeps it in
+              session memory.
+            </p>
+            <div class="token-value-row">
+              <code id="created-token"></code>
+              <button id="copy-token" class="icon-button" type="button" aria-label="Copy access token">
+                Copy
+              </button>
+            </div>
+          </div>
+
+          <div class="security-strip">
+            <span class="shield-icon" aria-hidden="true">✓</span>
+            <div>
+              <strong>Account-scoped by design</strong>
+              <span>
+                Your agents inherit this account boundary. Telegram is outbound-only and
+                cannot place or modify trades.
+              </span>
+            </div>
+          </div>
+
+          <section class="workflow-lab" aria-labelledby="workflow-heading">
+            <div class="workflow-lab-header">
+              <div>
+                <p class="eyebrow">Agent playbooks</p>
+                <h4 id="workflow-heading">Named workflows</h4>
+                <p class="muted">
+                  Define which context an agent must gather and how it should reason before
+                  and after each operation.
+                </p>
+              </div>
+              <div class="workflow-count">
+                <strong id="workflow-count">0</strong>
+                <span>configured</span>
+              </div>
+            </div>
+
+            <div class="workflow-layout">
+              <form id="workflow-form" class="workflow-editor panel">
+                <div class="workflow-editor-heading">
+                  <div>
+                    <span class="editor-kicker">Workflow editor</span>
+                    <h4 id="workflow-form-title">Create workflow</h4>
+                  </div>
+                  <span id="workflow-form-mode" class="editor-mode">New</span>
+                </div>
+
+                <input id="workflow-id" name="workflow_id" type="hidden" />
+
+                <label class="field">
+                  <span>Workflow name</span>
+                  <input
+                    id="workflow-name"
+                    name="workflow_name"
+                    type="text"
+                    minlength="1"
+                    maxlength="120"
+                    placeholder="e.g. BTC momentum review"
+                    autocomplete="off"
+                    required
+                  />
+                </label>
+
+                <label class="field">
+                  <span>Description <em>optional</em></span>
+                  <textarea
+                    id="workflow-description"
+                    name="workflow_description"
+                    maxlength="2000"
+                    placeholder="What decision should this playbook support?"
+                    rows="3"
+                  ></textarea>
+                </label>
+
+                <label class="toggle-field">
+                  <input id="workflow-enabled" name="workflow_enabled" type="checkbox" checked />
+                  <span>
+                    <strong>Workflow enabled</strong>
+                    <small>Disabled workflows cannot be selected by agents.</small>
+                  </span>
+                </label>
+
+                <div class="phase-editor">
+                  <div class="phase-heading">
+                    <div>
+                      <span class="phase-kicker">Phase 01</span>
+                      <h5>Before operation</h5>
+                    </div>
+                    <span>Gather and assess</span>
+                  </div>
+                  <p class="phase-description">
+                    Queries and instructions the agent must complete before proposing a trade.
+                  </p>
+                  <div id="before-steps" class="step-list" data-phase-steps="before_operation"></div>
+                  <button class="add-step-button" type="button" data-add-step="before_operation">
+                    <span aria-hidden="true">+</span>
+                    Add pre-operation step
+                  </button>
+                </div>
+
+                <div class="phase-editor">
+                  <div class="phase-heading">
+                    <div>
+                      <span class="phase-kicker">Phase 02</span>
+                      <h5>After operation</h5>
+                    </div>
+                    <span>Review and learn</span>
+                  </div>
+                  <p class="phase-description">
+                    Queries and instructions the agent must complete after recording the outcome.
+                  </p>
+                  <div id="after-steps" class="step-list" data-phase-steps="after_operation"></div>
+                  <button class="add-step-button" type="button" data-add-step="after_operation">
+                    <span aria-hidden="true">+</span>
+                    Add post-operation step
+                  </button>
+                </div>
+
+                <div class="workflow-form-actions">
+                  <button id="save-workflow" class="button button-primary" type="submit">
+                    Save workflow
+                  </button>
+                  <button id="reset-workflow" class="text-button" type="button">Clear editor</button>
+                </div>
+              </form>
+
+              <div class="workflow-list-panel panel">
+                <div class="workflow-list-heading">
+                  <div>
+                    <span class="editor-kicker">Account library</span>
+                    <h4>Your workflows</h4>
+                  </div>
+                  <span class="library-lock">Private</span>
+                </div>
+                <div id="workflow-list" class="workflow-list">
+                  <div class="empty-workflows">
+                    <span class="empty-mark" aria-hidden="true">+</span>
+                    <strong>No workflows yet</strong>
+                    <p>Create a named playbook so agents can select it by name.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="workflow-note">
+              <span class="note-mark" aria-hidden="true">i</span>
+              <p>
+                Workflow steps are limited to trusted market, RSS news, pattern and lesson
+                queries plus agent instructions. They cannot execute code, call arbitrary URLs,
+                or bypass server-side risk checks. Use <strong>$context.symbol</strong> and
+                <strong>$context.pattern_id</strong> to reuse a workflow across operations.
+              </p>
+            </div>
+          </section>
+
+          <div class="connections-grid">
+            <form class="connection-card" data-provider-form="binance">
+              <div class="connection-card-top">
+                <div class="provider-identity">
+                  <div class="provider-logo provider-binance">B</div>
+                  <div>
+                    <h4>Binance</h4>
+                    <p>Private connection placeholder</p>
+                  </div>
+                </div>
+                <span class="connection-status" data-status-for="binance">Not configured</span>
+              </div>
+
+              <div class="card-copy">
+                <p>
+                  These credentials are stored per account for the future private adapter.
+                  Market data remains public and read-only; live orders are disabled.
+                </p>
+              </div>
+
+              <label class="field">
+                <span>API key</span>
+                <input
+                  data-credential="api_key"
+                  type="password"
+                  placeholder="Binance API key"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                />
+              </label>
+
+              <label class="field">
+                <span>API secret</span>
+                <input
+                  data-credential="api_secret"
+                  type="password"
+                  placeholder="Binance API secret"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                />
+              </label>
+
+              <div class="card-actions">
+                <button class="button button-primary" type="submit">Save Binance credentials</button>
+                <button
+                  class="text-button danger-button"
+                  type="button"
+                  data-delete-provider="binance"
+                  hidden
+                >
+                  Remove
+                </button>
+              </div>
+            </form>
+
+            <form class="connection-card featured-card" data-provider-form="telegram">
+              <div class="connection-card-top">
+                <div class="provider-identity">
+                  <div class="provider-logo provider-telegram">↗</div>
+                  <div>
+                    <h4>Telegram</h4>
+                    <p>Operations, results and conclusions</p>
+                  </div>
+                </div>
+                <span class="connection-status" data-status-for="telegram">Not configured</span>
+              </div>
+
+              <div class="card-copy">
+                <p>
+                  Create a bot with BotFather, add it to the target chat, then provide the
+                  chat ID. Multiple chat IDs can be separated by commas. After the first
+                  save, leave the bot token blank when adding or changing chats.
+                </p>
+              </div>
+
+              <label class="field">
+                <span>Bot token <em>required on first save</em></span>
+                <input
+                  data-credential="bot_token"
+                  type="password"
+                  placeholder="123456:ABC••••"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                />
+              </label>
+
+              <label class="field">
+                <span>Chat IDs</span>
+                <input
+                  data-credential="chat_ids"
+                  type="text"
+                  placeholder="-1001234567890, 987654321"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                />
+              </label>
+
+              <div class="card-actions">
+                <button class="button button-primary" type="submit">Save Telegram credentials</button>
+                <button id="test-telegram" class="button button-outline" type="button" disabled>
+                  Send test
+                </button>
+                <button class="text-button danger-button" type="button" data-delete-provider="telegram" hidden>
+                  Remove
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div class="workspace-note">
+            <span class="note-mark" aria-hidden="true">i</span>
+            <p>
+              Saving merges the fields you submit with the provider values already stored
+              securely. RSS is the primary free news source, public Binance market data is
+              enabled, and X ingestion is disabled by default.
+            </p>
+          </div>
+        </section>
+
+        <footer class="page-footer">
+          <span>Crypto Orchestrator</span>
+          <span>•</span>
+          <span>Safety-first paper trading foundation</span>
+          <a href="/docs" target="_blank" rel="noreferrer">API docs ↗</a>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>

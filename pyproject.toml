@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling>=1.25,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "crypto-orchestrator"
+version = "0.1.0"
+description = "A safety-first crypto trading and API orchestration foundation"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "cryptography>=45,<52",
+    "fastapi>=0.115,<1",
+    "httpx>=0.27,<1",
+    "mcp>=2,<3",
+    "uvicorn[standard]>=0.30,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9",
+  "pytest-asyncio>=0.24,<1",
+  "ruff>=0.9,<1",
+]
+
+[project.scripts]
+crypto-orchestrator = "crypto_orchestrator.main:run"
+crypto-orchestrator-mcp = "crypto_orchestrator.stdio:run"
+crypto-orchestrator-strategy = "crypto_orchestrator.runner:run"
+crypto-orchestrator-supervisor = "crypto_orchestrator.supervisor:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/crypto_orchestrator"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
