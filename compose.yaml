@@ -4,7 +4,8 @@ services:
       context: .
     image: crypto-orchestrator:local
     ports:
-      - "${HTTP_PORT:-8000}:8000"
+      # Keep the application reachable only through the host Nginx proxy.
+      - "127.0.0.1:${HTTP_PORT:-8000}:8000"
     environment:
       APP_ENV: "${APP_ENV:-production}"
       TRADING_DB_PATH: /app/data/trading.db
@@ -32,3 +33,5 @@ services:
 
 volumes:
   trading_data:
+    name: trading-app-data
+    external: true
