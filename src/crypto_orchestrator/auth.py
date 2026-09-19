@@ -18,6 +18,7 @@ class AccountMiddleware:
         "/redoc",
         "/",
         "/app.js",
+        "/logo.svg",
         "/styles.css",
     })
 

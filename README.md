@@ -1,5 +1,9 @@
 # Crypto Orchestrator
 
+<p align="center">
+  <img src="src/crypto_orchestrator/static/logo.svg" alt="Crypto Orchestrator logo" width="144">
+</p>
+
 Crypto Orchestrator is a safety-first foundation for a crypto trading platform. It exposes a domain API and an MCP server while keeping execution behind explicit paper-trading and risk controls.
 
 ## Current scope

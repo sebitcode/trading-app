@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="logo-title logo-description">
+  <title id="logo-title">Crypto Orchestrator</title>
+  <desc id="logo-description">A connected market signal rising through an orbital control ring.</desc>
+  <rect width="96" height="96" rx="24" fill="#D7F36C"/>
+  <path d="M29 31a25 25 0 1 0 2 38" fill="none" stroke="#10160A" stroke-linecap="round" stroke-width="6"/>
+  <path d="m25 60 16-16 11 11 18-20" fill="none" stroke="#10160A" stroke-linecap="round" stroke-linejoin="round" stroke-width="7"/>
+  <path d="M61 35h9v9" fill="none" stroke="#10160A" stroke-linecap="round" stroke-linejoin="round" stroke-width="7"/>
+  <circle cx="25" cy="60" r="4.5" fill="#10160A"/>
+  <circle cx="52" cy="55" r="4.5" fill="#D7F36C" stroke="#10160A" stroke-width="4"/>
+</svg>
