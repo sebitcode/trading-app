@@ -42,7 +42,9 @@ X ingestion is disabled by default; data tools never accept provider credentials
 
 ## Docker Compose
 
-The Compose deployment exposes Nginx on port `8000`, proxies the UI/API/MCP traffic to the internal application container, persists SQLite in a named volume, and pins the container to paper trading.
+The Compose deployment exposes the application on port `8000`, persists SQLite in a named volume, and pins the container to paper trading. The Nginx configuration remains available at `nginx/default.conf` for a future proxy deployment but is not started by Compose.
+
+SQLite is intentional for now; PostgreSQL is not started until the application has a compatible persistence adapter and migration path.
 
 1. Create a local Compose environment file:
 
