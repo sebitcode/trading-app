@@ -72,12 +72,19 @@
     sessionStorage.setItem(SESSION_TOKEN_KEY, token);
   }
 
+  function renderSessionToken() {
+    const token = state.token || "";
+    elements.createdToken.textContent = token;
+    elements.registrationToken.hidden = !token;
+  }
+
   function clearSession() {
     state.token = null;
     state.account = null;
     state.credentials = [];
     state.workflows = [];
     sessionStorage.removeItem(SESSION_TOKEN_KEY);
+    renderSessionToken();
     elements.authPanel.hidden = false;
     elements.workspace.hidden = true;
     elements.signinForm.reset();
@@ -204,6 +211,7 @@
       state.account = responses[0];
       state.credentials = responses[1];
       state.workflows = responses[2];
+      renderSessionToken();
       renderAccount();
       renderCredentialStatus();
       renderWorkflows();
@@ -669,11 +677,9 @@
         false
       );
       setSessionToken(created.access_token);
-      elements.createdToken.textContent = created.access_token;
-      elements.registrationToken.hidden = false;
       form.elements.bootstrap_token.value = "";
       await loadWorkspace();
-      setAlert("Account created. Copy the access token before leaving this tab.", "success");
+      setAlert("Account created. The access token remains visible until you sign out.", "success");
     } catch (error) {
       setAlert(error.message || "Could not create the account.", "error");
     } finally {
@@ -812,7 +818,6 @@
   elements.copyToken.addEventListener("click", copyCreatedToken);
   elements.signOut.addEventListener("click", function () {
     clearSession();
-    elements.registrationToken.hidden = true;
     setAlert("Signed out. The account token was removed from this tab.", "success");
   });
   elements.testTelegram.addEventListener("click", handleTelegramTest);
