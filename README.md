@@ -28,6 +28,7 @@ Crypto Orchestrator is a safety-first foundation for a crypto trading platform. 
 - Account-scoped outbound Telegram notifications for paper execution, outcomes, and postmortem conclusions.
 - Account-scoped named workflows with before-operation and after-operation query phases.
 - Account-scoped named execution plans with paper-only budgets, data-source limits, and ordered agent steps.
+- Durable, idempotent agent investigation memory for periodic research, exposed through HTTP and MCP.
 - Deterministic regime-aware strategy evaluation with mirrored long/short candidates,
   technical/derivatives/news-event scores, and separate core/exploratory paper tiers.
 - Durable position exit policies with multiple take-profit limits, profitable price bands,
@@ -138,6 +139,22 @@ neither field retain the legacy global-risk-only behavior. `list_operations` and
 let an agent monitor open trades and compute sample metrics. The selected plan is snapshotted
 on accepted operations for later review. The same plan is also available as the MCP resource
 `trading://execution-plans/{plan_name}`.
+
+Plans also carry `schedule_interval_minutes` (one hour by default), a 48-hour
+`simulation_duration_minutes` default, and `manual_live_confirmation_required`. These fields
+describe how a terminal runner should operate; they do not unlock live trading.
+For the 1,000 USDT task, configure the plan with `capital_quote=1000`,
+`max_trade_notional_quote=1000`, `risk_per_trade_quote=5`, `max_daily_loss_quote=20`,
+`minimum_net_reward_risk_ratio=1.5`, `max_open_operations=1`, and
+`max_duration_minutes=2880`; set `strict_risk_controls=true` to make the server enforce
+those task-specific limits, including the dynamic 0.5% risk cap and short-margin rules.
+
+Agents can persist the research that led to each decision with `record_agent_investigation`.
+The record accepts the signal, direction, entry, stop, target, fees, funding, hypothetical PnL,
+balance/equity, drawdown, open positions, spread, data freshness, risk reasons, and bounded
+evidence/findings. It is account-scoped and retried safely with an `idempotency_key`. Retrieve
+it with `list_agent_investigations` or `get_agent_investigation`; provider credentials are not
+accepted by this schema and are never returned.
 
 Plans that set `minimum_signal_score` can also enable `exploratory_trades_enabled`.
 Exploratory signals have their own minimum score and consume only
@@ -310,12 +327,20 @@ stop/target/time exits, record outcomes, and write postmortems:
 DEFAULT_ACCOUNT_ID=acct_<account-id> \
   uv run crypto-orchestrator-strategy \
   --plan "Regime-aware sandbox v5" \
-  --duration-minutes 120 \
-  --target-operations 10
+  --duration-minutes 2880 \
+  --target-operations 48 \
+  --interval-seconds 3600 \
+  --leave-open
 ```
 
-The runner is a bounded sampling process and closes its remaining run-owned positions when
-its duration ends. Use `crypto-orchestrator-supervisor` instead when positions must survive
+The runner records one investigation for every attempted symbol cycle. The command above
+uses one-hour cycles for the first 48 hours and leaves open paper positions for the
+independent supervisor. If `--interval-seconds` is omitted, the runner uses the plan's
+`schedule_interval_minutes`; if the duration is omitted, it uses the plan's simulation
+duration, bounded by `max_duration_minutes`.
+
+Without `--leave-open`, the runner is a bounded sampling process and closes its remaining
+run-owned positions when its duration ends. Use `crypto-orchestrator-supervisor` instead when positions must survive
 the AI session and remain active until their durable exit policy triggers.
 
 The runner is paper-only. It does not fabricate a trade to satisfy a quota: a configured
@@ -378,6 +403,10 @@ JSON
 ## Safety boundary
 
 - `PAPER_TRADING_ONLY=true` rejects live proposals.
+- `strict_risk_controls=true` hard-stops the plan after 2% daily loss, 5% equity drawdown,
+  three consecutive losses, severe data/API quality failures, or abnormal spread.
+- A manual confirmation flag in a plan is descriptive only; live exchange execution is
+  not implemented and no MCP/terminal command can place a real order.
 - Spot short proposals are rejected until a margin adapter is implemented.
 - Risk checks run on the server, not in the agent prompt.
 - The agent's explanation is stored separately from validated root cause.

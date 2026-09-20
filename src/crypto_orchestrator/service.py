@@ -12,6 +12,8 @@ from .config import Settings
 from .intelligence import IntelligenceService, build_default_intelligence
 from .models import (
     DEFAULT_ACCOUNT_ID,
+    AgentInvestigationInput,
+    AgentInvestigationRecord,
     DerivativesPositioningResponse,
     ExecutionMode,
     ExecutionPlan,
@@ -27,6 +29,7 @@ from .models import (
     ExecutionPlanSymbolsUpdateRequest,
     ExecutionPlanUpdateRequest,
     Lesson,
+    MarginMode,
     MarketDataResponse,
     MarketType,
     OperationRecord,
@@ -1072,6 +1075,29 @@ class TradingService:
     ) -> dict[str, object]:
         """Evaluate once and execute only the best accepted paper candidate."""
 
+        plan = None
+        try:
+            plan = self.get_execution_plan_by_name(plan_name)
+        except NotFoundError:
+            pass
+        if plan:
+            halt_reasons = self._strategy_halt_reasons(plan)
+            if halt_reasons:
+                result = {
+                    "executed": False,
+                    "reason": "strategy_halted",
+                    "risk_reasons": halt_reasons,
+                }
+                self._record_strategy_cycle(
+                    plan_name,
+                    symbol,
+                    execution_plan_run_id,
+                    executed=False,
+                    reason="strategy_halted",
+                    plan_version=plan.version,
+                )
+                return result
+
         try:
             evaluation = await self.evaluate_strategy(
                 plan_name,
@@ -1105,7 +1131,7 @@ class TradingService:
             )
             return result
 
-        plan = self.get_execution_plan_by_name(plan_name)
+        plan = plan or self.get_execution_plan_by_name(plan_name)
         candidate = evaluation.candidates[0]
         if execution_plan_run_id is None:
             result = {"executed": False, "reason": "execution_plan_run_id_required"}
@@ -1277,6 +1303,66 @@ class TradingService:
         today = datetime.now(UTC).date().isoformat()
         return Decimal(self.store.daily_loss(today, account_id=self._account_id()))
 
+    def _strategy_halt_reasons(self, plan: ExecutionPlan) -> list[str]:
+        """Return hard-stop reasons derived from the account's durable paper ledger."""
+
+        reasons: list[str] = []
+        daily_limit = min(plan.max_daily_loss_quote, plan.capital_quote * Decimal("0.02"))
+        daily_loss = self._daily_loss()
+        if daily_loss >= daily_limit:
+            reasons.append("daily_loss_limit_reached")
+
+        operations = self.store.list_operations(account_id=self._account_id(), limit=500)
+        closed = sorted(
+            (
+                operation
+                for operation in operations
+                if operation.outcome is not None
+            ),
+            key=lambda operation: operation.outcome.closed_at,
+        )
+        equity = plan.capital_quote
+        peak_equity = equity
+        max_drawdown = Decimal("0")
+        for operation in closed:
+            equity += operation.outcome.pnl_net
+            peak_equity = max(peak_equity, equity)
+            max_drawdown = max(max_drawdown, peak_equity - equity)
+        if max_drawdown >= plan.capital_quote * Decimal("0.05"):
+            reasons.append("total_drawdown_limit_reached")
+
+        loss_statuses = {
+            OutcomeStatus.LOSS,
+            OutcomeStatus.PARTIAL_LOSS,
+            OutcomeStatus.LIQUIDATED,
+        }
+        if len(closed) >= 3 and all(
+            operation.outcome.status in loss_statuses for operation in closed[-3:]
+        ):
+            reasons.append("consecutive_loss_limit_reached")
+
+        recent_cycle = self.store.list_strategy_cycles(
+            limit=1,
+            account_id=self._account_id(),
+            plan_name=plan.name,
+        )
+        if recent_cycle:
+            cycle = recent_cycle[0]
+            quality_text = " ".join(cycle.evaluation.data_quality) if cycle.evaluation else ""
+            rejection_text = (
+                " ".join(cycle.evaluation.rejection_reasons)
+                if cycle.evaluation
+                else ""
+            )
+            severe_quality = any(
+                marker in f"{cycle.reason} {quality_text}".lower()
+                for marker in ("api", "unavailable", "stale", "upstream", "error")
+            )
+            abnormal_spread = "spread_above_limit" in rejection_text
+            if severe_quality or abnormal_spread:
+                reasons.append("recent_data_quality_halt")
+        return list(dict.fromkeys(reasons))
+
     def evaluate_risk(self, proposal: TradeProposal) -> RiskCheck:
         with self._lock:
             account_id = self._account_id()
@@ -1321,6 +1407,36 @@ class TradingService:
                 reasons.append("execution_plan_notional_limit_exceeded")
             if check.estimated_stop_loss_quote > plan.risk_per_trade_quote:
                 reasons.append("execution_plan_risk_limit_exceeded")
+            if plan.strict_risk_controls:
+                realized_equity = plan.capital_quote + sum(
+                    (
+                        operation.outcome.pnl_net
+                        for operation in self.store.list_operations(
+                            account_id=account_id,
+                            limit=500,
+                        )
+                        if operation.outcome is not None
+                    ),
+                    Decimal("0"),
+                )
+                current_risk_limit = min(
+                    Decimal("5"),
+                    plan.risk_per_trade_quote,
+                    max(realized_equity, Decimal("0")) * Decimal("0.005"),
+                )
+                if check.estimated_stop_loss_quote > current_risk_limit:
+                    reasons.append("strict_risk_per_trade_limit_exceeded")
+                if proposal.context.market_type is MarketType.PERPETUAL:
+                    if (
+                        proposal.context.side is TradeSide.LONG
+                        and proposal.leverage != Decimal("1")
+                    ):
+                        reasons.append("strict_long_leverage_not_allowed")
+                    if proposal.context.side is TradeSide.SHORT:
+                        if proposal.leverage > Decimal("2"):
+                            reasons.append("strict_short_leverage_limit_exceeded")
+                        if proposal.margin_mode is not MarginMode.ISOLATED:
+                            reasons.append("strict_short_isolated_margin_required")
             if daily_loss >= plan.max_daily_loss_quote:
                 reasons.append("execution_plan_daily_loss_limit_exceeded")
             if open_operations >= plan.max_open_operations:
@@ -1347,6 +1463,7 @@ class TradingService:
                     )
                     if check.estimated_stop_loss_quote > exploratory_loss_limit:
                         reasons.append("exploratory_risk_limit_exceeded")
+            reasons.extend(self._strategy_halt_reasons(plan))
             reasons.extend(self._execution_plan_provenance_reasons(proposal, plan))
             return RiskCheck(
                 allowed=not reasons,
@@ -1411,6 +1528,80 @@ class TradingService:
             account_id=self._account_id(),
             plan_name=plan_name,
             execution_plan_run_id=execution_plan_run_id,
+        )
+
+    def record_agent_investigation(
+        self, payload: AgentInvestigationInput
+    ) -> AgentInvestigationRecord:
+        """Persist one periodic investigation without exposing provider secrets."""
+
+        with self._lock:
+            return self._record_agent_investigation(payload)
+
+    def _record_agent_investigation(
+        self, payload: AgentInvestigationInput
+    ) -> AgentInvestigationRecord:
+        account_id = self._account_id()
+        existing = self.store.find_agent_investigation_by_idempotency_key(
+            payload.idempotency_key,
+            account_id=account_id,
+        )
+        if existing:
+            existing_payload = existing.model_dump(
+                exclude={"investigation_id", "account_id", "recorded_at"}
+            )
+            if existing_payload != payload.model_dump():
+                raise ConflictError(
+                    "investigation idempotency key already belongs to another record"
+                )
+            return existing
+
+        if payload.plan_name:
+            plan = self.get_execution_plan_by_name(payload.plan_name)
+            if payload.execution_plan_run_id:
+                run = self._execution_plan_run_for_read(
+                    payload.execution_plan_run_id,
+                    payload.symbol,
+                )
+                if run.plan_id != plan.plan_id or run.plan_name.casefold() != plan.name.casefold():
+                    raise ConflictError("execution_plan_run_plan_mismatch")
+        elif payload.execution_plan_run_id:
+            raise ConflictError("plan_name_required_for_execution_plan_run")
+
+        if payload.cycle_id and not self.store.get_strategy_cycle(
+            payload.cycle_id,
+            account_id=account_id,
+        ):
+            raise ConflictError("strategy_cycle_not_found")
+
+        investigation = AgentInvestigationRecord(
+            account_id=account_id,
+            **payload.model_dump(),
+        )
+        self.store.save_agent_investigation(investigation)
+        return investigation
+
+    def get_agent_investigation(self, investigation_id: str) -> AgentInvestigationRecord:
+        investigation = self.store.get_agent_investigation(
+            investigation_id,
+            account_id=self._account_id(),
+        )
+        if not investigation:
+            raise NotFoundError(f"agent investigation not found: {investigation_id}")
+        return investigation
+
+    def list_agent_investigations(
+        self,
+        limit: int = 100,
+        *,
+        task_name: str | None = None,
+        plan_name: str | None = None,
+    ) -> list[AgentInvestigationRecord]:
+        return self.store.list_agent_investigations(
+            limit,
+            account_id=self._account_id(),
+            task_name=task_name,
+            plan_name=plan_name,
         )
 
     @staticmethod

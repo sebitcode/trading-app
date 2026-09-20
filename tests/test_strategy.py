@@ -18,6 +18,7 @@ from crypto_orchestrator.models import (
     MarketType,
     SignalTier,
     SignalType,
+    StrategyCycleRecord,
     TradeSide,
 )
 from crypto_orchestrator.service import TradingService
@@ -363,6 +364,29 @@ def test_strategy_cycle_returns_reason_when_plan_is_missing(tmp_path) -> None:
     result = asyncio.run(service.run_strategy_cycle("missing-plan", "BTCUSDT", "epr_missing"))
 
     assert result == {"executed": False, "reason": "execution plan not found: missing-plan"}
+
+
+def test_strategy_cycle_halts_after_persisted_data_failure(tmp_path) -> None:
+    settings = Settings(db_path=tmp_path / "strategy-halt.db")
+    service = TradingService(settings, SQLiteStore(settings.db_path))
+    plan = service.create_execution_plan(
+        ExecutionPlanCreateRequest.model_validate(_strategy_plan_payload())
+    )
+    service.store.save_strategy_cycle(
+        StrategyCycleRecord(
+            cycle_id="sc_datafailure001",
+            plan_name=plan.name,
+            symbol="BTCUSDT",
+            executed=False,
+            reason="strategy_market_data_unavailable",
+        )
+    )
+
+    result = asyncio.run(service.run_strategy_cycle(plan.name, "BTCUSDT", "epr_halt001"))
+
+    assert result["executed"] is False
+    assert result["reason"] == "strategy_halted"
+    assert "recent_data_quality_halt" in result["risk_reasons"]
 
 
 async def _failing_snapshot(*args, **kwargs):

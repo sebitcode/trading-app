@@ -10,6 +10,7 @@ from threading import RLock
 from .models import (
     DEFAULT_ACCOUNT_ID,
     Account,
+    AgentInvestigationRecord,
     CredentialMetadata,
     ExecutionPlan,
     ExecutionPlanReadReceipt,
@@ -103,6 +104,7 @@ class SQLiteStore:
             self._migrate_execution_plan_provenance(connection)
             self._migrate_position_reviews(connection)
             self._migrate_strategy_cycles(connection)
+            self._migrate_agent_investigations(connection)
 
     @staticmethod
     def _columns(connection: sqlite3.Connection, table: str) -> set[str]:
@@ -292,6 +294,29 @@ class SQLiteStore:
             """
         )
 
+    @staticmethod
+    def _migrate_agent_investigations(connection: sqlite3.Connection) -> None:
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS agent_investigations (
+                investigation_id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                task_name TEXT NOT NULL,
+                plan_name TEXT,
+                recorded_at TEXT NOT NULL,
+                snapshot_json TEXT NOT NULL,
+                FOREIGN KEY(account_id) REFERENCES accounts(account_id)
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_investigations_idempotency
+                ON agent_investigations(account_id, idempotency_key);
+            CREATE INDEX IF NOT EXISTS idx_agent_investigations_account
+                ON agent_investigations(account_id, recorded_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_agent_investigations_task
+                ON agent_investigations(account_id, task_name, recorded_at DESC);
+            """
+        )
+
     def create_account(self, account: Account, token_hash: str) -> None:
         with self._lock, self._connect() as connection:
             connection.execute(
@@ -467,6 +492,111 @@ class SQLiteStore:
                 params,
             ).fetchall()
         return [StrategyCycleRecord.model_validate_json(row["snapshot_json"]) for row in rows]
+
+    def get_strategy_cycle(
+        self, cycle_id: str, account_id: str = DEFAULT_ACCOUNT_ID
+    ) -> StrategyCycleRecord | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT snapshot_json FROM strategy_cycles
+                WHERE cycle_id = ? AND account_id = ?
+                """,
+                (cycle_id, account_id),
+            ).fetchone()
+        return StrategyCycleRecord.model_validate_json(row["snapshot_json"]) if row else None
+
+    def save_agent_investigation(self, investigation: AgentInvestigationRecord) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO agent_investigations(
+                    investigation_id, account_id, idempotency_key, task_name,
+                    plan_name, recorded_at, snapshot_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(investigation_id) DO UPDATE SET
+                    idempotency_key = excluded.idempotency_key,
+                    task_name = excluded.task_name,
+                    plan_name = excluded.plan_name,
+                    recorded_at = excluded.recorded_at,
+                    snapshot_json = excluded.snapshot_json
+                """,
+                (
+                    investigation.investigation_id,
+                    investigation.account_id,
+                    investigation.idempotency_key,
+                    investigation.task_name,
+                    investigation.plan_name,
+                    investigation.recorded_at.isoformat(),
+                    investigation.model_dump_json(),
+                ),
+            )
+
+    def get_agent_investigation(
+        self, investigation_id: str, account_id: str = DEFAULT_ACCOUNT_ID
+    ) -> AgentInvestigationRecord | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT snapshot_json FROM agent_investigations
+                WHERE investigation_id = ? AND account_id = ?
+                """,
+                (investigation_id, account_id),
+            ).fetchone()
+        return (
+            AgentInvestigationRecord.model_validate_json(row["snapshot_json"])
+            if row
+            else None
+        )
+
+    def find_agent_investigation_by_idempotency_key(
+        self, key: str, account_id: str = DEFAULT_ACCOUNT_ID
+    ) -> AgentInvestigationRecord | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT snapshot_json FROM agent_investigations
+                WHERE idempotency_key = ? AND account_id = ?
+                """,
+                (key, account_id),
+            ).fetchone()
+        return (
+            AgentInvestigationRecord.model_validate_json(row["snapshot_json"])
+            if row
+            else None
+        )
+
+    def list_agent_investigations(
+        self,
+        limit: int = 100,
+        *,
+        account_id: str = DEFAULT_ACCOUNT_ID,
+        task_name: str | None = None,
+        plan_name: str | None = None,
+    ) -> list[AgentInvestigationRecord]:
+        limit = max(1, min(limit, 500))
+        clauses = ["account_id = ?"]
+        params: list[str | int] = [account_id]
+        if task_name:
+            clauses.append("task_name = ? COLLATE NOCASE")
+            params.append(task_name)
+        if plan_name:
+            clauses.append("plan_name = ? COLLATE NOCASE")
+            params.append(plan_name)
+        params.append(limit)
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT snapshot_json FROM agent_investigations
+                WHERE """
+                + " AND ".join(clauses)
+                + " ORDER BY recorded_at DESC LIMIT ?",
+                params,
+            ).fetchall()
+        return [
+            AgentInvestigationRecord.model_validate_json(row["snapshot_json"])
+            for row in rows
+        ]
 
     def count_open_operations(self, account_id: str = DEFAULT_ACCOUNT_ID) -> int:
         with self._lock, self._connect() as connection:

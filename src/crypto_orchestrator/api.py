@@ -22,6 +22,8 @@ from .models import (
     Account,
     AccountCreated,
     AccountCreateRequest,
+    AgentInvestigationInput,
+    AgentInvestigationRecord,
     CredentialMetadata,
     CredentialPayload,
     DerivativesPositioningResponse,
@@ -393,6 +395,44 @@ def create_app(settings: Settings | None = None, service: TradingService | None 
             plan_name=plan_name,
             execution_plan_run_id=execution_plan_run_id,
         )
+
+    @app.post(
+        "/api/v1/investigations",
+        response_model=AgentInvestigationRecord,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def record_agent_investigation(payload: AgentInvestigationInput) -> AgentInvestigationRecord:
+        try:
+            return service.record_agent_investigation(payload)
+        except NotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get(
+        "/api/v1/investigations",
+        response_model=list[AgentInvestigationRecord],
+    )
+    def list_agent_investigations(
+        limit: int = Query(default=100, ge=1, le=500),
+        task_name: str | None = Query(default=None, min_length=1, max_length=120),
+        plan_name: str | None = Query(default=None, min_length=1, max_length=120),
+    ) -> list[AgentInvestigationRecord]:
+        return service.list_agent_investigations(
+            limit,
+            task_name=task_name,
+            plan_name=plan_name,
+        )
+
+    @app.get(
+        "/api/v1/investigations/{investigation_id}",
+        response_model=AgentInvestigationRecord,
+    )
+    def get_agent_investigation(investigation_id: str) -> AgentInvestigationRecord:
+        try:
+            return service.get_agent_investigation(investigation_id)
+        except NotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/v1/signals/x", response_model=SignalResponse)
     async def x_posts(

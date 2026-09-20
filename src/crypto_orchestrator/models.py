@@ -40,6 +40,11 @@ class TradeSide(StrEnum):
     SHORT = "short"
 
 
+class MarginMode(StrEnum):
+    CROSS = "cross"
+    ISOLATED = "isolated"
+
+
 class SignalTier(StrEnum):
     CORE = "core"
     EXPLORATORY = "exploratory"
@@ -133,6 +138,18 @@ class ExecutionPlanAction(StrEnum):
 class ExecutionPlanRunStatus(StrEnum):
     READY = "ready"
     BLOCKED = "blocked"
+
+
+class InvestigationPhase(StrEnum):
+    SIMULATION = "simulation"
+    LIVE = "live"
+
+
+class InvestigationDecision(StrEnum):
+    NO_TRADE = "no_trade"
+    PAPER_TRADE = "paper_trade"
+    RISK_BLOCKED = "risk_blocked"
+    HALTED = "halted"
 
 
 class ExecutionPlanReadType(StrEnum):
@@ -632,6 +649,12 @@ class ExecutionPlanDefinition(BaseModel):
     max_open_operations: int = Field(ge=1, le=100)
     max_duration_minutes: int = Field(gt=0, le=7 * 24 * 60)
     target_operations: int = Field(ge=1, le=10_000)
+    schedule_interval_minutes: int = Field(default=60, gt=0, le=24 * 60)
+    simulation_duration_minutes: int = Field(
+        default=48 * 60, gt=0, le=30 * 24 * 60
+    )
+    strict_risk_controls: bool = False
+    manual_live_confirmation_required: bool = True
     symbols: list[str] = Field(min_length=1, max_length=20)
     market_type: MarketType
     timeframe: str = Field(min_length=1, max_length=20)
@@ -704,6 +727,31 @@ class ExecutionPlanDefinition(BaseModel):
             raise ValueError(
                 "risk_per_trade_quote * max_open_operations cannot exceed max_daily_loss_quote"
             )
+        if self.strict_risk_controls:
+            if self.capital_quote > Decimal("1000"):
+                raise ValueError("strict risk plans cannot exceed 1000 USDT of capital")
+            if self.max_trade_notional_quote > Decimal("1000"):
+                raise ValueError("strict risk plans cannot exceed 1000 USDT per trade")
+            if self.risk_per_trade_quote > min(
+                Decimal("5"), self.capital_quote * Decimal("0.005")
+            ):
+                raise ValueError(
+                    "strict risk plans must cap risk at 0.5% of capital and 5 USDT"
+                )
+            if self.max_daily_loss_quote > self.capital_quote * Decimal("0.02"):
+                raise ValueError("strict risk plans must cap daily loss at 2% of capital")
+            if self.max_open_operations != 1:
+                raise ValueError("strict risk plans allow one open position")
+            if self.minimum_net_reward_risk_ratio < Decimal("1.5"):
+                raise ValueError("strict risk plans require a 1.5 reward/risk ratio")
+            if self.schedule_interval_minutes != 60:
+                raise ValueError("strict risk plans run every 60 minutes")
+            if self.simulation_duration_minutes < 48 * 60:
+                raise ValueError("strict risk plans require 48 hours of simulation")
+            if self.max_duration_minutes < self.simulation_duration_minutes:
+                raise ValueError("strict risk plan duration must cover its simulation phase")
+            if not self.manual_live_confirmation_required:
+                raise ValueError("strict risk plans require manual live confirmation")
         if (
             self.minimum_signal_score is not None
             and self.exploratory_minimum_signal_score > self.minimum_signal_score
@@ -1021,6 +1069,7 @@ class TradeProposal(BaseModel):
     take_profit_price: Decimal | None = Field(default=None, gt=0)
     exit_policy: PositionExitPolicy | None = None
     leverage: Decimal = Field(default=Decimal("1"), ge=1)
+    margin_mode: MarginMode | None = None
     max_loss_quote: Decimal = Field(gt=0)
     signal_observed_at: datetime = Field(default_factory=utc_now)
 
@@ -1291,6 +1340,133 @@ class StrategyCycleRecord(BaseModel):
         if not normalized:
             raise ValueError("cycle symbol cannot be blank")
         return normalized
+
+
+class AgentInvestigationInput(BaseModel):
+    """Validated, secret-free research evidence submitted by an agent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=8, max_length=120)
+    task_name: str = Field(min_length=1, max_length=120)
+    plan_name: str | None = Field(default=None, min_length=1, max_length=120)
+    agent_id: str = Field(min_length=1, max_length=120)
+    symbol: str = Field(min_length=3, max_length=40)
+    operation_id: str | None = Field(default=None, min_length=8, max_length=100)
+    cycle_id: str | None = Field(
+        default=None,
+        min_length=10,
+        max_length=100,
+        pattern=r"^sc_[a-z0-9]+$",
+    )
+    execution_plan_run_id: str | None = Field(
+        default=None,
+        min_length=10,
+        max_length=100,
+        pattern=r"^epr_[a-z0-9]+$",
+    )
+    phase: InvestigationPhase = InvestigationPhase.SIMULATION
+    decision: InvestigationDecision
+    summary: str = Field(min_length=3, max_length=2_000)
+    reason: str = Field(min_length=1, max_length=500)
+    signal: str | None = Field(default=None, max_length=500)
+    direction: TradeSide | None = None
+    entry_price: Decimal | None = Field(default=None, gt=0)
+    stop_loss_price: Decimal | None = Field(default=None, gt=0)
+    take_profit_price: Decimal | None = Field(default=None, gt=0)
+    fees_quote: Decimal = Field(default=Decimal("0"), ge=0)
+    funding_quote: Decimal = Decimal("0")
+    hypothetical_pnl_quote: Decimal | None = None
+    balance_quote: Decimal | None = Field(default=None, ge=0)
+    equity_quote: Decimal | None = Field(default=None, ge=0)
+    drawdown_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    open_positions: int = Field(default=0, ge=0, le=100)
+    spread_bps: Decimal | None = Field(default=None, ge=0)
+    data_fresh: bool = True
+    risk_reasons: list[str] = Field(default_factory=list, max_length=20)
+    findings: dict[str, str] = Field(default_factory=dict, max_length=30)
+    evidence: list[Evidence] = Field(default_factory=list, max_length=30)
+
+    @field_validator("task_name", "plan_name")
+    @classmethod
+    def normalize_investigation_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("investigation names cannot be blank")
+        return normalized
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_investigation_symbol(cls, value: str) -> str:
+        normalized = value.replace("/", "").replace(" ", "").upper()
+        if not normalized:
+            raise ValueError("investigation symbol cannot be blank")
+        return normalized
+
+    @field_validator("findings")
+    @classmethod
+    def validate_findings(cls, value: dict[str, str]) -> dict[str, str]:
+        sensitive_names = {
+            "access_token",
+            "api_key",
+            "api_secret",
+            "credential",
+            "password",
+            "private_key",
+            "secret",
+            "token",
+        }
+        for key, item in value.items():
+            normalized_key = key.strip().lower()
+            if not normalized_key or len(key) > 80:
+                raise ValueError("investigation finding names must be 1-80 characters")
+            if normalized_key in sensitive_names or any(
+                part in normalized_key for part in ("credential", "secret", "token", "password")
+            ):
+                raise ValueError("investigation findings cannot contain credential fields")
+            if len(item) > 1_000:
+                raise ValueError("investigation findings must be at most 1000 characters")
+        return {key.strip(): item for key, item in value.items()}
+
+    @model_validator(mode="after")
+    def validate_trade_snapshot(self) -> AgentInvestigationInput:
+        if self.decision is InvestigationDecision.PAPER_TRADE:
+            required = (
+                self.direction,
+                self.entry_price,
+                self.stop_loss_price,
+                self.take_profit_price,
+            )
+            if any(value is None for value in required):
+                raise ValueError(
+                    "paper_trade investigations require direction, entry, stop, and target"
+                )
+        return self
+
+
+class AgentInvestigationRecord(AgentInvestigationInput):
+    """Durable account-scoped memory for one periodic agent investigation."""
+
+    investigation_id: str = Field(
+        default_factory=lambda: f"inv_{uuid4().hex}",
+        min_length=10,
+        max_length=100,
+        pattern=r"^inv_[a-z0-9]+$",
+    )
+    account_id: str = Field(
+        default=DEFAULT_ACCOUNT_ID,
+        min_length=6,
+        max_length=80,
+        pattern=r"^acct_[a-z0-9]+$",
+    )
+    recorded_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("recorded_at")
+    @classmethod
+    def normalize_investigation_timestamp(cls, value: datetime) -> datetime:
+        return _utc(value)
 
 
 class PatternContext(BaseModel):

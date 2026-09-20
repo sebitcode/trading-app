@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import os
+import sys
 import time
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -93,7 +94,7 @@ async def _close_operation(
     *,
     fee_rate: Decimal,
     slippage_rate: Decimal,
-) -> None:
+) -> dict[str, Any]:
     operation_id = _text(operation.get("operation_id"))
     proposal = operation.get("proposal") or {}
     fees, slippage = _costs(operation, exit_price, fee_rate, slippage_rate)
@@ -159,6 +160,98 @@ async def _close_operation(
         f"{(proposal.get('context') or {}).get('side')} status={status} reason={reason}",
         flush=True,
     )
+    return closed if isinstance(closed, dict) else {}
+
+
+async def _record_investigation(
+    session: ClientSession,
+    *,
+    plan_name: str,
+    run_id: str | None,
+    symbol: str,
+    result: dict[str, Any],
+    open_positions: int,
+    event: str = "cycle",
+) -> None:
+    """Persist the runner's structured evidence without ever carrying credentials."""
+
+    evaluation = result.get("evaluation") or {}
+    candidates = evaluation.get("candidates") or []
+    candidate = candidates[0] if candidates else {}
+    operation = result.get("operation") or {}
+    proposal = operation.get("proposal") or {}
+    context = proposal.get("context") or {}
+    reason = _text(result.get("reason"), "strategy_cycle_completed")
+    data_quality = evaluation.get("data_quality") or []
+    executed = bool(result.get("executed"))
+    decision = "paper_trade" if executed else "no_trade"
+    if reason in {"risk_rejected", "execution_plan_run_not_active"}:
+        decision = "risk_blocked"
+    if reason == "strategy_halted":
+        decision = "halted"
+
+    findings: dict[str, str] = {}
+    for key in ("market_regime", "rejection_reasons", "data_quality", "metrics"):
+        value = evaluation.get(key)
+        if value:
+            findings[key] = json.dumps(value, sort_keys=True)
+    risk_check = result.get("risk_check") or {}
+    risk_reasons = result.get("risk_reasons") or risk_check.get("reasons") or []
+    spread = (evaluation.get("metrics") or {}).get("spread_bps")
+    run_binding = {"execution_plan_run_id": run_id} if run_id else {}
+    idempotency_subject = operation.get("operation_id") or (
+        f"{run_id or 'local'}-{symbol}-{int(_now().timestamp())}"
+    )
+    investigation: dict[str, Any] = {
+        "idempotency_key": f"{event}-{idempotency_subject}",
+        "task_name": plan_name,
+        "plan_name": plan_name,
+        "agent_id": "crypto-orchestrator-strategy-runner",
+        "symbol": symbol,
+        "operation_id": operation.get("operation_id"),
+        "phase": "simulation",
+        "decision": decision,
+        "summary": f"Periodic strategy investigation for {symbol}.",
+        "reason": reason,
+        "signal": (
+            f"score={candidate.get('signal_score')} reasons={candidate.get('reasons')}"
+            if candidate
+            else None
+        ),
+        "fees_quote": str((operation.get("outcome") or {}).get("fees_quote", "0")),
+        "funding_quote": str((operation.get("outcome") or {}).get("funding_quote", "0")),
+        "open_positions": open_positions,
+        "data_fresh": not data_quality and "stale" not in json.dumps(evaluation).lower(),
+        "risk_reasons": risk_reasons,
+        "findings": findings,
+        **run_binding,
+    }
+    trade_snapshot = candidate or proposal
+    if trade_snapshot:
+        investigation.update(
+            {
+                "direction": trade_snapshot.get("side") or context.get("side"),
+                "entry_price": trade_snapshot.get("entry_price"),
+                "stop_loss_price": trade_snapshot.get("stop_loss_price"),
+                "take_profit_price": trade_snapshot.get("take_profit_price"),
+            }
+        )
+    if spread not in (None, "unavailable"):
+        investigation["spread_bps"] = spread
+    outcome = operation.get("outcome") or {}
+    if outcome.get("pnl_net") is not None:
+        investigation["hypothetical_pnl_quote"] = outcome["pnl_net"]
+
+    try:
+        saved = await _call(session, "record_agent_investigation", {"investigation": investigation})
+    except RuntimeError as exc:
+        print(f"INVESTIGATION_SAVE_FAILED symbol={symbol} reason={exc}", flush=True)
+    else:
+        if isinstance(saved, dict) and saved.get("saved") is not True:
+            print(
+                f"INVESTIGATION_SAVE_FAILED symbol={symbol} reason={saved.get('error')}",
+                flush=True,
+            )
 
 
 async def _monitor(
@@ -203,13 +296,26 @@ async def _monitor(
             if opened_at and (_now() - _datetime(opened_at)).total_seconds() >= max_hold_seconds:
                 reason = "max_holding_time"
         if reason:
-            await _close_operation(
+            closed_operation = await _close_operation(
                 session,
                 operation,
                 price,
                 reason,
                 fee_rate=fee_rate,
                 slippage_rate=slippage_rate,
+            )
+            await _record_investigation(
+                session,
+                plan_name=plan["name"],
+                run_id=run_id if use_plan_receipt else None,
+                symbol=symbol,
+                result={
+                    "executed": True,
+                    "reason": f"paper_outcome:{reason}",
+                    "operation": closed_operation.get("operation") or closed_operation,
+                },
+                open_positions=max(0, len(operations) - closed - 1),
+                event="outcome",
             )
             closed += 1
     return closed
@@ -224,9 +330,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--symbols", default="", help="Comma-separated symbols; defaults to plan symbols"
     )
-    parser.add_argument("--duration-minutes", type=int, default=120)
-    parser.add_argument("--target-operations", type=int, default=10)
-    parser.add_argument("--interval-seconds", type=int, default=60)
+    parser.add_argument("--duration-minutes", type=int, default=None)
+    parser.add_argument("--target-operations", type=int, default=None)
+    parser.add_argument(
+        "--interval-seconds",
+        type=int,
+        default=None,
+        help="Override the plan interval; otherwise use schedule_interval_minutes.",
+    )
     parser.add_argument("--max-hold-seconds", type=int, default=900)
     parser.add_argument(
         "--leave-open",
@@ -241,8 +352,8 @@ async def _run(arguments: argparse.Namespace) -> int:
     environment = os.environ.copy()
     environment["DEFAULT_ACCOUNT_ID"] = arguments.account_id
     settings = StdioServerParameters(
-        command="uv",
-        args=["run", "crypto-orchestrator-mcp"],
+        command=sys.executable,
+        args=["-m", "crypto_orchestrator.stdio"],
         cwd=root,
         env=environment,
     )
@@ -260,19 +371,39 @@ async def _run(arguments: argparse.Namespace) -> int:
                 )
                 if symbol.strip()
             )
+            duration_minutes = (
+                arguments.duration_minutes
+                if arguments.duration_minutes is not None
+                else min(
+                    int(plan.get("simulation_duration_minutes") or plan["max_duration_minutes"]),
+                    int(plan["max_duration_minutes"]),
+                )
+            )
+            target_operations = (
+                arguments.target_operations
+                if arguments.target_operations is not None
+                else int(plan["target_operations"])
+            )
             run = await _call(
                 session,
                 "run_execution_plan",
                 {
                     "plan_name": arguments.plan,
-                    "duration_minutes": arguments.duration_minutes,
-                    "target_operations": arguments.target_operations,
+                    "duration_minutes": duration_minutes,
+                    "target_operations": target_operations,
                 },
             )
             if run.get("status") != "ready":
                 raise RuntimeError(f"plan preflight blocked: {run.get('blockers')}")
             run_id = run["run_id"]
             deadline = _datetime(run["expires_at"])
+            interval_seconds = (
+                arguments.interval_seconds
+                if arguments.interval_seconds is not None
+                else int(plan.get("schedule_interval_minutes", 60)) * 60
+            )
+            if interval_seconds <= 0:
+                raise RuntimeError("interval must be greater than zero")
             fee_rate = _decimal(os.getenv("DEFAULT_FEE_RATE", "0.001"))
             slippage_rate = _decimal(os.getenv("DEFAULT_SLIPPAGE_RATE", "0.0002"))
             created = 0
@@ -283,7 +414,7 @@ async def _run(arguments: argparse.Namespace) -> int:
                 f"expires_at={run['expires_at']} paper_only=true",
                 flush=True,
             )
-            while _now() < deadline and created < arguments.target_operations:
+            while _now() < deadline and created < target_operations:
                 cycle_started = time.monotonic()
                 operations = await _open_operations(session, run_id)
                 if not arguments.leave_open:
@@ -299,7 +430,7 @@ async def _run(arguments: argparse.Namespace) -> int:
                 operations = await _open_operations(session, run_id)
                 capacity = max(0, int(plan["max_open_operations"]) - len(operations))
                 for symbol in symbols:
-                    if capacity <= 0 or created >= arguments.target_operations:
+                    if capacity <= 0 or created >= target_operations:
                         break
                     result = await _call(
                         session,
@@ -310,6 +441,16 @@ async def _run(arguments: argparse.Namespace) -> int:
                             "execution_plan_run_id": run_id,
                         },
                     )
+                    current_open = len(await _open_operations(session, run_id))
+                    if isinstance(result, dict):
+                        await _record_investigation(
+                            session,
+                            plan_name=arguments.plan,
+                            run_id=run_id,
+                            symbol=symbol,
+                            result=result,
+                            open_positions=current_open,
+                        )
                     if result.get("executed"):
                         created += 1
                         capacity -= 1
@@ -339,7 +480,7 @@ async def _run(arguments: argparse.Namespace) -> int:
                     f"elapsed={elapsed:.1f}s remaining={remaining_seconds}s",
                     flush=True,
                 )
-                await asyncio.sleep(max(0.5, arguments.interval_seconds - elapsed))
+                await asyncio.sleep(max(0.5, interval_seconds - elapsed))
 
             remaining = await _open_operations(session, run_id)
             if not arguments.leave_open:

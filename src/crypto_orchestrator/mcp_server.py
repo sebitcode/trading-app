@@ -7,6 +7,7 @@ from mcp.server.mcpserver import MCPServer
 
 from .accounts import CredentialVaultError, UnsupportedCredentialProvider
 from .models import (
+    AgentInvestigationInput,
     CredentialPayload,
     ExecutionPlanCreateRequest,
     ExecutionPlanRunRequest,
@@ -58,6 +59,10 @@ def build_mcp_server(service: TradingService) -> MCPServer:
             "remain subject only to global risk checks. Use get_execution_plan_run to inspect "
             "safe run status and receipts. "
             "Use list_operations and get_operation to monitor and evaluate account operations. "
+            "Persist every periodic investigation with record_agent_investigation, including "
+            "the decision, reason, signal, prices, costs, hypothetical result, equity, and "
+            "drawdown when available; use list_agent_investigations to recover that memory. "
+            "Investigation records contain no credential fields and are account-scoped. "
             "Open paper positions are persistent records; a separate supervisor may monitor "
             "their protective exit policies without an AI session. Before any discretionary "
             "adjustment or forced close, call prepare_position_review, analyze its fresh market, "
@@ -370,6 +375,45 @@ def build_mcp_server(service: TradingService) -> MCPServer:
         """Read one account-scoped operation, including its plan snapshot and outcome."""
 
         return jsonable(service.get_operation(operation_id))
+
+    @mcp.tool()
+    def record_agent_investigation(
+        investigation: AgentInvestigationInput,
+    ) -> dict[str, object]:
+        """Persist one idempotent, account-scoped periodic investigation."""
+
+        try:
+            return {
+                "saved": True,
+                "investigation": jsonable(service.record_agent_investigation(investigation)),
+            }
+        except (ConflictError, NotFoundError) as exc:
+            return {"saved": False, "error": str(exc)}
+
+    @mcp.tool()
+    def list_agent_investigations(
+        limit: int = 100,
+        task_name: str | None = None,
+        plan_name: str | None = None,
+    ) -> list[dict[str, object]]:
+        """Recover recent research memory for the authenticated account."""
+
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        return [
+            jsonable(item)
+            for item in service.list_agent_investigations(
+                limit,
+                task_name=task_name,
+                plan_name=plan_name,
+            )
+        ]
+
+    @mcp.tool()
+    def get_agent_investigation(investigation_id: str) -> dict[str, object]:
+        """Read one account-scoped periodic investigation."""
+
+        return jsonable(service.get_agent_investigation(investigation_id))
 
     @mcp.tool()
     def record_position_observation(

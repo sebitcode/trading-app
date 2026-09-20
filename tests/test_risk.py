@@ -229,3 +229,67 @@ def test_plan_limits_exploratory_signal_risk(
 
     assert not check.allowed
     assert "exploratory_risk_limit_exceeded" in check.reasons
+
+
+def test_strict_periodic_plan_requires_the_requested_risk_contract() -> None:
+    payload = _risk_plan_payload(
+        strict_risk_controls=True,
+        max_trade_notional_quote="1000",
+        risk_per_trade_quote="5",
+        max_daily_loss_quote="20",
+        minimum_net_reward_risk_ratio="1.5",
+        max_open_operations=1,
+        max_duration_minutes=2880,
+        simulation_duration_minutes=2880,
+        schedule_interval_minutes=60,
+    )
+
+    plan = ExecutionPlanCreateRequest.model_validate(payload)
+
+    assert plan.strict_risk_controls is True
+    assert plan.simulation_duration_minutes == 2880
+
+    with pytest.raises(ValidationError, match="0.5% of capital"):
+        ExecutionPlanCreateRequest.model_validate(
+            payload | {"risk_per_trade_quote": "5.01"}
+        )
+
+
+def test_strict_plan_recalculates_trade_risk_from_realized_equity(
+    service, proposal_payload: dict[str, object]
+) -> None:
+    loss_payload = dict(proposal_payload)
+    loss_payload["idempotency_key"] = "strict-equity-loss-001"
+    loss = service.create_proposal(TradeProposal.model_validate(loss_payload))
+    service.execute_paper(loss.operation_id)
+    service.close_operation(
+        loss.operation_id,
+        OutcomeInput(exit_price="59000", exit_reason="stop_loss"),
+    )
+    plan = service.create_execution_plan(
+        ExecutionPlanCreateRequest.model_validate(
+            _risk_plan_payload(
+                strict_risk_controls=True,
+                max_trade_notional_quote="1000",
+                risk_per_trade_quote="5",
+                max_daily_loss_quote="20",
+                minimum_net_reward_risk_ratio="1.5",
+                max_open_operations=1,
+                max_duration_minutes=2880,
+                simulation_duration_minutes=2880,
+                schedule_interval_minutes=60,
+            )
+        )
+    )
+    candidate = _plan_compatible_proposal(
+        proposal_payload,
+        plan_name=plan.name,
+        idempotency_key="strict-equity-candidate-001",
+        quantity="0.008",
+        max_loss_quote="8",
+    )
+
+    check = service.evaluate_risk(candidate)
+
+    assert not check.allowed
+    assert "strict_risk_per_trade_limit_exceeded" in check.reasons

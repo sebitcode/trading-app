@@ -48,6 +48,9 @@ def test_mcp_catalog_contains_safe_tools_and_resources(service) -> None:
     assert "get_execution_plan_run" in tool_names
     assert "list_operations" in tool_names
     assert "get_operation" in tool_names
+    assert "record_agent_investigation" in tool_names
+    assert "list_agent_investigations" in tool_names
+    assert "get_agent_investigation" in tool_names
     assert "record_position_observation" in tool_names
     assert "prepare_position_review" in tool_names
     assert "get_position_review" in tool_names
@@ -221,3 +224,39 @@ def test_mcp_can_configure_credentials_and_named_workflows(tmp_path) -> None:
     assert updated_symbols.structured_content["plan"]["symbols"] == ["BTCUSDT", "ZECUSDT"]
     assert plan_run.structured_content["status"] == "ready"
     assert removed.structured_content == {"provider": "x", "removed": True}
+
+
+def test_mcp_can_persist_periodic_investigation(tmp_path) -> None:
+    settings = Settings(db_path=tmp_path / "mcp-investigation.db")
+    store = SQLiteStore(settings.db_path)
+    account_manager = AccountManager(settings, store)
+    account = account_manager.create_account("MCP investigation account")
+    service = TradingService(settings, store, account_manager=account_manager)
+    mcp = build_mcp_server(service)
+
+    async def record_and_read():
+        with account_scope(account.account_id):
+            saved = await mcp.call_tool(
+                "record_agent_investigation",
+                {
+                    "investigation": {
+                        "idempotency_key": "mcp-hourly-001",
+                        "task_name": "Hourly crypto monitor",
+                        "agent_id": "mcp-agent",
+                        "symbol": "BTC/USDT",
+                        "decision": "no_trade",
+                        "summary": "The setup did not meet the configured threshold.",
+                        "reason": "no_eligible_candidate",
+                        "findings": {"market_regime": "range"},
+                    }
+                },
+            )
+            listed = await mcp.call_tool("list_agent_investigations", {"limit": 10})
+        return saved, listed
+
+    saved, listed = asyncio.run(record_and_read())
+
+    assert saved.structured_content["saved"] is True
+    assert saved.structured_content["investigation"]["task_name"] == "Hourly crypto monitor"
+    assert "secret" not in str(saved.structured_content).lower()
+    assert len(listed.structured_content["result"]) == 1
