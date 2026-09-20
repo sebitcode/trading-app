@@ -21,6 +21,15 @@ def _utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
+def _normalize_execution_plan_symbols(values: list[str]) -> list[str]:
+    normalized = [value.replace("/", "").replace(" ", "").upper() for value in values]
+    if any(not value for value in normalized):
+        raise ValueError("execution plan symbols cannot be blank")
+    if len(normalized) != len(set(normalized)):
+        raise ValueError("execution plan symbols must be unique")
+    return normalized
+
+
 class MarketType(StrEnum):
     SPOT = "spot"
     PERPETUAL = "perpetual"
@@ -648,12 +657,7 @@ class ExecutionPlanDefinition(BaseModel):
     @field_validator("symbols")
     @classmethod
     def normalize_symbols(cls, values: list[str]) -> list[str]:
-        normalized = [value.replace("/", "").replace(" ", "").upper() for value in values]
-        if any(not value for value in normalized):
-            raise ValueError("execution plan symbols cannot be blank")
-        if len(normalized) != len(set(normalized)):
-            raise ValueError("execution plan symbols must be unique")
-        return normalized
+        return _normalize_execution_plan_symbols(values)
 
     @field_validator("allowed_sides")
     @classmethod
@@ -725,6 +729,19 @@ class ExecutionPlanCreateRequest(ExecutionPlanDefinition):
 
 class ExecutionPlanUpdateRequest(ExecutionPlanDefinition):
     pass
+
+
+class ExecutionPlanSymbolsUpdateRequest(BaseModel):
+    """The user-selected symbol universe for an existing execution plan."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    symbols: list[str] = Field(min_length=1, max_length=20)
+
+    @field_validator("symbols")
+    @classmethod
+    def normalize_symbols(cls, values: list[str]) -> list[str]:
+        return _normalize_execution_plan_symbols(values)
 
 
 class ExecutionPlan(ExecutionPlanDefinition):
@@ -1220,6 +1237,60 @@ class RiskCheck(BaseModel):
     estimated_stop_loss_quote: Decimal
     estimated_net_reward_quote: Decimal = Decimal("0")
     estimated_reward_risk_ratio: Decimal = Decimal("0")
+
+
+class StrategyCycleRecord(BaseModel):
+    """Durable decision evidence for one strategy-cycle attempt."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cycle_id: str = Field(
+        min_length=10,
+        max_length=100,
+        pattern=r"^sc_[a-z0-9]+$",
+    )
+    account_id: str = Field(
+        default=DEFAULT_ACCOUNT_ID,
+        min_length=6,
+        max_length=80,
+        pattern=r"^acct_[a-z0-9]+$",
+    )
+    plan_name: str = Field(min_length=1, max_length=120)
+    plan_version: int | None = Field(default=None, ge=1)
+    symbol: str = Field(min_length=3, max_length=40)
+    execution_plan_run_id: str | None = Field(
+        default=None,
+        min_length=10,
+        max_length=100,
+        pattern=r"^epr_[a-z0-9]+$",
+    )
+    executed: bool
+    reason: str = Field(min_length=1, max_length=240)
+    operation_id: str | None = Field(default=None, min_length=8, max_length=100)
+    evaluation: StrategyEvaluation | None = None
+    risk_check: RiskCheck | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def normalize_cycle_timestamp(cls, value: datetime) -> datetime:
+        return _utc(value)
+
+    @field_validator("plan_name")
+    @classmethod
+    def normalize_cycle_plan_name(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("cycle plan name cannot be blank")
+        return normalized
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_cycle_symbol(cls, value: str) -> str:
+        normalized = value.replace("/", "").replace(" ", "").upper()
+        if not normalized:
+            raise ValueError("cycle symbol cannot be blank")
+        return normalized
 
 
 class PatternContext(BaseModel):

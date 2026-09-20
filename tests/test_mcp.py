@@ -38,6 +38,8 @@ def test_mcp_catalog_contains_safe_tools_and_resources(service) -> None:
     assert "get_workflow" in tool_names
     assert "run_workflow" in tool_names
     assert "list_execution_plans" in tool_names
+    assert "get_execution_plan_symbols" in tool_names
+    assert "update_execution_plan_symbols" in tool_names
     assert "get_execution_plan" in tool_names
     assert "create_execution_plan" in tool_names
     assert "update_execution_plan" in tool_names
@@ -124,7 +126,7 @@ def test_mcp_can_configure_credentials_and_named_workflows(tmp_path) -> None:
                         "max_open_operations": 1,
                         "max_duration_minutes": 60,
                         "target_operations": 5,
-                        "symbols": ["BTCUSDT"],
+                        "symbols": ["BTCUSDT", "ZECUSDT"],
                         "market_type": "perpetual",
                         "timeframe": "1m",
                         "allowed_sides": ["long", "short"],
@@ -149,6 +151,16 @@ def test_mcp_can_configure_credentials_and_named_workflows(tmp_path) -> None:
             read_plan = await mcp.call_tool(
                 "get_execution_plan", {"plan_name": "MCP paper plan"}
             )
+            selected_symbols = await mcp.call_tool(
+                "get_execution_plan_symbols", {"plan_name": "MCP paper plan"}
+            )
+            updated_symbols = await mcp.call_tool(
+                "update_execution_plan_symbols",
+                {
+                    "plan_name": "MCP paper plan",
+                    "symbols": ["BTC/USDT", "ZEC/USDT"],
+                },
+            )
             plan_run = await mcp.call_tool(
                 "run_execution_plan",
                 {"plan_name": "MCP paper plan", "symbol": "BTC/USDT"},
@@ -164,13 +176,25 @@ def test_mcp_can_configure_credentials_and_named_workflows(tmp_path) -> None:
             plan,
             plans,
             read_plan,
+            selected_symbols,
+            updated_symbols,
             plan_run,
             removed,
         )
 
-    credential, credentials, workflow, workflows, plan, plans, read_plan, plan_run, removed = (
-        asyncio.run(configure())
-    )
+    (
+        credential,
+        credentials,
+        workflow,
+        workflows,
+        plan,
+        plans,
+        read_plan,
+        selected_symbols,
+        updated_symbols,
+        plan_run,
+        removed,
+    ) = asyncio.run(configure())
 
     assert credential.structured_content["saved"] is True
     assert "secret-x" not in str(credential.structured_content)
@@ -183,5 +207,17 @@ def test_mcp_can_configure_credentials_and_named_workflows(tmp_path) -> None:
     assert plan.structured_content["plan"]["status"] == "active"
     assert plans.structured_content["result"][0]["name"] == "MCP paper plan"
     assert read_plan.structured_content["name"] == "MCP paper plan"
+    assert selected_symbols.structured_content == {
+        "plan_name": "MCP paper plan",
+        "plan_version": 1,
+        "status": "active",
+        "symbols": ["BTCUSDT", "ZECUSDT"],
+        "market_type": "perpetual",
+        "timeframe": "1m",
+        "selection_source": "user_execution_plan",
+    }
+    assert updated_symbols.structured_content["saved"] is True
+    assert updated_symbols.structured_content["plan"]["version"] == 2
+    assert updated_symbols.structured_content["plan"]["symbols"] == ["BTCUSDT", "ZECUSDT"]
     assert plan_run.structured_content["status"] == "ready"
     assert removed.structured_content == {"provider": "x", "removed": True}

@@ -262,6 +262,13 @@ class FakeMarketConnector:
         return _trend_snapshot()
 
 
+class FakeRangeMarketConnector:
+    name = "binance"
+
+    async def snapshot(self, symbol, market_type, timeframe, limit):
+        return _range_transition_snapshot()
+
+
 class FakePositioningConnector:
     name = "binance_derivatives"
 
@@ -300,6 +307,50 @@ def test_strategy_cycle_executes_one_risk_checked_paper_operation(tmp_path) -> N
     assert operation["status"] == "paper_open"
     assert operation["proposal"]["context"]["side"] == "long"
     assert operation["proposal"]["signal_tier"] == "core"
+    cycle = service.list_strategy_cycles()[0]
+    assert cycle.executed is True
+    assert cycle.operation_id == operation["operation_id"]
+
+
+def test_strategy_cycle_persists_no_trade_decision_and_evidence(tmp_path) -> None:
+    settings = Settings(db_path=tmp_path / "strategy-no-trade.db")
+    intelligence = IntelligenceService(
+        market_data=(FakeRangeMarketConnector(),),
+        positioning=(FakePositioningConnector(),),
+        news=(FakeNewsConnector(),),
+    )
+    service = TradingService(settings, SQLiteStore(settings.db_path), intelligence=intelligence)
+    plan = service.create_execution_plan(
+        ExecutionPlanCreateRequest.model_validate(_strategy_plan_payload())
+    )
+    run = asyncio.run(
+        service.run_execution_plan(
+            ExecutionPlanRunRequest(plan_name=plan.name, symbol="BTCUSDT")
+        )
+    )
+
+    result = asyncio.run(service.run_strategy_cycle(plan.name, "BTCUSDT", run.run_id))
+
+    assert result["executed"] is False
+    assert result["reason"] == "no_eligible_candidate"
+    assert service.list_operations() == []
+    cycle = service.list_strategy_cycles()[0]
+    assert cycle.executed is False
+    assert cycle.execution_plan_run_id == run.run_id
+    assert cycle.evaluation is not None
+    assert cycle.evaluation.market_regime == "range"
+    assert "long_technical_setup_not_eligible" in cycle.evaluation.rejection_reasons
+    assert "news_data_missing_or_neutral" in cycle.evaluation.data_quality
+
+    reopened = TradingService(
+        settings,
+        SQLiteStore(settings.db_path),
+        intelligence=intelligence,
+    )
+    persisted = reopened.list_strategy_cycles()
+    assert len(persisted) == 1
+    assert persisted[0].cycle_id == cycle.cycle_id
+    assert persisted[0].evaluation is not None
 
 
 def test_strategy_cycle_returns_reason_when_plan_is_missing(tmp_path) -> None:

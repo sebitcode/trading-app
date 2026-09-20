@@ -17,6 +17,7 @@ from crypto_orchestrator.models import (
     ExternalSignal,
     MarketSnapshot,
     SignalType,
+    StrategyCycleRecord,
 )
 from crypto_orchestrator.notifications import NotificationService
 from crypto_orchestrator.service import TradingService
@@ -67,6 +68,38 @@ def test_api_exposes_health_and_paper_flow(tmp_path, proposal_payload, postmorte
         context = client.get("/api/v1/patterns/momentum_breakout/context", headers=headers)
         assert context.status_code == 200
         assert context.json()["total_cases"] == 1
+
+
+def test_api_exposes_account_scoped_strategy_cycle_history(tmp_path) -> None:
+    settings = Settings(db_path=tmp_path / "api-cycles.db")
+    store = SQLiteStore(settings.db_path)
+    service = TradingService(settings, store)
+    app = create_app(settings, service)
+
+    with TestClient(app) as client:
+        headers = _account_headers(client, "Cycle account")
+        account_id = client.get("/api/v1/account", headers=headers).json()["account_id"]
+        store.save_strategy_cycle(
+            StrategyCycleRecord(
+                cycle_id="sc_12345678",
+                account_id=account_id,
+                plan_name="paper plan",
+                symbol="BTC/USDT",
+                execution_plan_run_id="epr_12345678",
+                executed=False,
+                reason="no_eligible_candidate",
+            )
+        )
+        history = client.get("/api/v1/strategy/cycles", headers=headers)
+        other_headers = _account_headers(client, "Other cycle account")
+        other_history = client.get("/api/v1/strategy/cycles", headers=other_headers)
+
+    assert history.status_code == 200
+    assert history.json()[0]["executed"] is False
+    assert history.json()[0]["reason"] == "no_eligible_candidate"
+    assert history.json()[0]["evaluation"] is None
+    assert other_history.status_code == 200
+    assert other_history.json() == []
 
 
 def test_api_rejects_live_proposal(tmp_path, proposal_payload) -> None:

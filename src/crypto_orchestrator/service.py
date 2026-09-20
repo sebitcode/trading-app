@@ -24,6 +24,7 @@ from .models import (
     ExecutionPlanRunResult,
     ExecutionPlanRunStatus,
     ExecutionPlanStatus,
+    ExecutionPlanSymbolsUpdateRequest,
     ExecutionPlanUpdateRequest,
     Lesson,
     MarketDataResponse,
@@ -49,6 +50,7 @@ from .models import (
     RiskCheck,
     SignalResponse,
     SignalTier,
+    StrategyCycleRecord,
     StrategyEvaluation,
     TakeProfitLimit,
     TradeOutcome,
@@ -250,6 +252,23 @@ class TradingService:
         )
         self.store.save_execution_plan(plan)
         return plan
+
+    def update_execution_plan_symbols(
+        self, plan_name: str, symbols: list[str]
+    ) -> ExecutionPlan:
+        """Update only the user-selected symbol universe and create a new plan version."""
+
+        current = self.get_execution_plan_by_name(plan_name)
+        selection = ExecutionPlanSymbolsUpdateRequest.model_validate({"symbols": symbols})
+        payload = ExecutionPlanUpdateRequest.model_validate(
+            {
+                **current.model_dump(
+                    exclude={"plan_id", "account_id", "version", "created_at", "updated_at"}
+                ),
+                "symbols": selection.symbols,
+            }
+        )
+        return self.update_execution_plan(current.plan_id, payload)
 
     def delete_execution_plan(self, plan_id: str) -> None:
         if not self.store.delete_execution_plan(plan_id, account_id=self._account_id()):
@@ -1016,6 +1035,35 @@ class TradingService:
         ]
         return evaluation.model_copy(update={"data_quality": list(dict.fromkeys(source_quality))})
 
+    def _record_strategy_cycle(
+        self,
+        plan_name: str,
+        symbol: str,
+        execution_plan_run_id: str | None,
+        *,
+        executed: bool,
+        reason: str,
+        plan_version: int | None = None,
+        operation_id: str | None = None,
+        evaluation: StrategyEvaluation | None = None,
+        risk_check: RiskCheck | None = None,
+    ) -> StrategyCycleRecord:
+        record = StrategyCycleRecord(
+            cycle_id=f"sc_{uuid4().hex}",
+            account_id=self._account_id(),
+            plan_name=plan_name,
+            plan_version=plan_version,
+            symbol=symbol,
+            execution_plan_run_id=execution_plan_run_id,
+            executed=executed,
+            reason=reason[:240] or "strategy_cycle_completed",
+            operation_id=operation_id,
+            evaluation=evaluation,
+            risk_check=risk_check,
+        )
+        self.store.save_strategy_cycle(record)
+        return record
+
     async def run_strategy_cycle(
         self,
         plan_name: str,
@@ -1031,19 +1079,46 @@ class TradingService:
                 execution_plan_run_id,
             )
         except (ConflictError, NotFoundError, ValueError) as exc:
-            return {"executed": False, "reason": str(exc)}
+            result = {"executed": False, "reason": str(exc)}
+            self._record_strategy_cycle(
+                plan_name,
+                symbol,
+                execution_plan_run_id,
+                executed=False,
+                reason=str(exc),
+            )
+            return result
 
         if not evaluation.candidates:
-            return {
+            result = {
                 "executed": False,
                 "reason": "no_eligible_candidate",
                 "evaluation": jsonable(evaluation),
             }
+            self._record_strategy_cycle(
+                plan_name,
+                symbol,
+                execution_plan_run_id,
+                executed=False,
+                reason="no_eligible_candidate",
+                evaluation=evaluation,
+            )
+            return result
 
         plan = self.get_execution_plan_by_name(plan_name)
         candidate = evaluation.candidates[0]
         if execution_plan_run_id is None:
-            return {"executed": False, "reason": "execution_plan_run_id_required"}
+            result = {"executed": False, "reason": "execution_plan_run_id_required"}
+            self._record_strategy_cycle(
+                plan_name,
+                symbol,
+                execution_plan_run_id,
+                executed=False,
+                reason="execution_plan_run_id_required",
+                plan_version=plan.version,
+                evaluation=evaluation,
+            )
+            return result
         try:
             self.pattern_context(
                 plan.pattern_id,
@@ -1144,18 +1219,49 @@ class TradingService:
             operation = self.create_proposal(proposal)
             operation = self.execute_paper(operation.operation_id)
         except RiskRejected as exc:
-            return {
+            result = {
                 "executed": False,
                 "reason": "risk_rejected",
                 "risk_check": jsonable(exc.check),
                 "evaluation": jsonable(evaluation),
             }
+            self._record_strategy_cycle(
+                plan_name,
+                symbol,
+                execution_plan_run_id,
+                executed=False,
+                reason="risk_rejected",
+                plan_version=plan.version,
+                evaluation=evaluation,
+                risk_check=exc.check,
+            )
+            return result
         except (ConflictError, NotFoundError) as exc:
-            return {
+            result = {
                 "executed": False,
                 "reason": str(exc),
                 "evaluation": jsonable(evaluation),
             }
+            self._record_strategy_cycle(
+                plan_name,
+                symbol,
+                execution_plan_run_id,
+                executed=False,
+                reason=str(exc),
+                plan_version=plan.version,
+                evaluation=evaluation,
+            )
+            return result
+        self._record_strategy_cycle(
+            plan_name,
+            symbol,
+            execution_plan_run_id,
+            executed=True,
+            reason="operation_opened",
+            plan_version=plan.version,
+            operation_id=operation.operation_id,
+            evaluation=evaluation,
+        )
         return {
             "executed": True,
             "operation": jsonable(operation),
@@ -1292,6 +1398,20 @@ class TradingService:
 
     def list_operations(self, limit: int = 100) -> list[OperationRecord]:
         return self.store.list_operations(limit, account_id=self._account_id())
+
+    def list_strategy_cycles(
+        self,
+        limit: int = 100,
+        *,
+        plan_name: str | None = None,
+        execution_plan_run_id: str | None = None,
+    ) -> list[StrategyCycleRecord]:
+        return self.store.list_strategy_cycles(
+            limit,
+            account_id=self._account_id(),
+            plan_name=plan_name,
+            execution_plan_run_id=execution_plan_run_id,
+        )
 
     @staticmethod
     def _effective_exit_policy(operation: OperationRecord) -> PositionExitPolicy:

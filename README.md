@@ -149,7 +149,10 @@ The MCP tools `evaluate_strategy` and `run_strategy_cycle` use fresh market, agg
 derivatives, and RSS context. The evaluator classifies trend, range, and squeeze regimes,
 mirrors long/short rules, and sizes stop, target, and quantity after modeled costs. A cycle
 executes at most one paper operation and never bypasses server-side risk or provenance checks.
-Missing data or negative economics still result in no trade.
+Missing data or negative economics still result in no trade. Every cycle is persisted as
+account-scoped decision evidence, including the evaluation, rejected conditions, data-quality
+signals, and the opened operation when one exists. The UI and HTTP
+`GET /api/v1/strategy/cycles` route expose that history after the cycle response is gone.
 
 ### Persistent paper positions
 
@@ -194,6 +197,12 @@ exit worker.
 The equivalent HTTP routes are `/api/v1/execution-plans` and
 `/api/v1/execution-plans/run`. Plan data sources are allowlisted to public Binance and
 configured RSS; agents cannot inject arbitrary upstream URLs or code.
+
+In the Strategy plan editor, select the symbols the AI may evaluate. The selection is saved
+in the plan's `symbols` field; the MCP tool `get_execution_plan_symbols` returns that exact
+user-defined allowlist before a strategy run. If the user asks the AI to change the targets,
+it can call `update_execution_plan_symbols` with the requested list. Updating a plan creates a
+new version, so an already-started run keeps its original symbol perimeter.
 
 ### Accounts and credentials
 
@@ -248,6 +257,9 @@ The MCP server exposes these data tools:
   funding/mark price, global and top-trader long-short ratios, and taker buy/sell flow.
 - `evaluate_strategy`: deterministic regime-aware technical, derivatives, sentiment, and news-event
   evaluation for both long and short sides.
+- `get_execution_plan_symbols`: the exact symbol allowlist selected by the user for a plan.
+- `update_execution_plan_symbols`: replace that allowlist from an explicit user request and
+  return the new plan version.
 - `run_strategy_cycle`: evaluate one symbol and execute at most one accepted paper operation.
 - `get_pattern_context` and `get_lessons`: account-scoped candidate history; a pattern-context
   read also satisfies the lesson receipt when the active plan requires both.

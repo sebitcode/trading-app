@@ -9,6 +9,7 @@
     workflows: [],
     plans: [],
     operations: [],
+    strategyCycles: [],
     lessons: [],
     health: null,
     selectedOperation: null,
@@ -59,6 +60,7 @@
     planCount: $("#plan-count"),
     planForm: $("#plan-form"),
     planId: $("#plan-id"),
+    planSymbolOptions: $("#plan-symbol-options"),
     planFormTitle: $("#plan-form-title"),
     planFormMode: $("#plan-form-mode"),
     planSteps: $("#plan-steps"),
@@ -67,6 +69,8 @@
     strategyPlanName: $("#strategy-plan-name"),
     strategyRunId: $("#strategy-run-id"),
     strategyOutput: $("#strategy-output"),
+    strategyCycleHistory: $("#strategy-cycle-history"),
+    cycleCount: $("#cycle-count"),
     planRunOutput: $("#plan-run-output"),
     workflowList: $("#workflow-list"),
     workflowCount: $("#workflow-count"),
@@ -154,6 +158,7 @@
     state.workflows = [];
     state.plans = [];
     state.operations = [];
+    state.strategyCycles = [];
     state.lessons = [];
     state.health = null;
     state.selectedOperation = null;
@@ -392,12 +397,13 @@
     if (!state.token) return;
     setAlert("Loading the desk…", "info");
     try {
-      const [account, credentials, workflows, plans, operations, lessons] = await Promise.all([
+      const [account, credentials, workflows, plans, operations, strategyCycles, lessons] = await Promise.all([
         api("/api/v1/account"),
         api("/api/v1/account/credentials"),
         api("/api/v1/workflows"),
         api("/api/v1/execution-plans"),
         api("/api/v1/operations"),
+        api("/api/v1/strategy/cycles?limit=100"),
         api("/api/v1/lessons?limit=500"),
       ]);
       state.account = account;
@@ -405,12 +411,14 @@
       state.workflows = workflows;
       state.plans = plans;
       state.operations = operations;
+      state.strategyCycles = strategyCycles;
       state.lessons = lessons;
       renderAccount();
       renderCredentialStatus();
       renderWorkflows();
       renderPlans();
       renderOperations();
+      renderStrategyCycles();
       renderKpis();
       renderOverviewOperations();
       populateResourceSelects();
@@ -429,19 +437,22 @@
   async function refreshWorkspace() {
     if (!state.token) return;
     try {
-      const [workflows, plans, operations, lessons] = await Promise.all([
+      const [workflows, plans, operations, strategyCycles, lessons] = await Promise.all([
         api("/api/v1/workflows"),
         api("/api/v1/execution-plans"),
         api("/api/v1/operations"),
+        api("/api/v1/strategy/cycles?limit=100"),
         api("/api/v1/lessons?limit=500"),
       ]);
       state.workflows = workflows;
       state.plans = plans;
       state.operations = operations;
+      state.strategyCycles = strategyCycles;
       state.lessons = lessons;
       renderWorkflows();
       renderPlans();
       renderOperations();
+      renderStrategyCycles();
       renderKpis();
       renderOverviewOperations();
       populateResourceSelects();
@@ -455,7 +466,8 @@
 
   // Workflow editor -------------------------------------------------------
   const workflowStepLabels = { market_snapshot: "Market snapshot", crypto_news: "Crypto news", x_posts: "X posts (disabled)", pattern_context: "Pattern context", lessons: "Candidate lessons", agent_instruction: "Agent instruction" };
-  const workflowSymbolChoices = [["$context.symbol", "Use operation symbol ($context.symbol)"], ["BTC/USDT", "BTC/USDT"], ["ETH/USDT", "ETH/USDT"], ["SOL/USDT", "SOL/USDT"], ["BNB/USDT", "BNB/USDT"], ["XRP/USDT", "XRP/USDT"], ["ADA/USDT", "ADA/USDT"], ["DOGE/USDT", "DOGE/USDT"]];
+  const workflowSymbolChoices = [["$context.symbol", "Use operation symbol ($context.symbol)"], ["BTC/USDT", "BTC/USDT"], ["ETH/USDT", "ETH/USDT"], ["ZEC/USDT", "ZEC/USDT"], ["LTC/USDT", "LTC/USDT"], ["LINK/USDT", "LINK/USDT"], ["AVAX/USDT", "AVAX/USDT"], ["DOT/USDT", "DOT/USDT"], ["UNI/USDT", "UNI/USDT"], ["AAVE/USDT", "AAVE/USDT"], ["TRX/USDT", "TRX/USDT"], ["SOL/USDT", "SOL/USDT"], ["BNB/USDT", "BNB/USDT"], ["XRP/USDT", "XRP/USDT"], ["ADA/USDT", "ADA/USDT"], ["DOGE/USDT", "DOGE/USDT"]];
+  const planSymbolChoices = workflowSymbolChoices.slice(1).map(([symbol]) => symbol);
 
   function workflowSymbolOptions(savedValue) {
     const known = new Set(workflowSymbolChoices.map((choice) => choice[0]));
@@ -669,13 +681,50 @@
     });
   }
 
+  function renderPlanSymbolOptions() {
+    if (!elements.planSymbolOptions || elements.planSymbolOptions.dataset.ready) return;
+    elements.planSymbolOptions.innerHTML = '<legend>Symbols the AI may use</legend>' + planSymbolChoices.map((symbol) => {
+      const id = "plan-symbol-" + canonicalSymbol(symbol).toLowerCase();
+      return '<label for="' + id + '"><input id="' + id + '" type="checkbox" name="plan_symbols" value="' + escapeHtml(symbol) + '" data-plan-symbol /> <span>' + escapeHtml(symbol) + '</span></label>';
+    }).join("");
+    $$('[data-plan-symbol]', elements.planSymbolOptions).forEach((input) => input.addEventListener("change", () => {
+      const custom = commaList(formValue(elements.planForm, "symbols"));
+      const known = new Set(planSymbolChoices.map(canonicalSymbol));
+      selectValue(elements.planForm, "symbols", custom.filter((symbol) => !known.has(canonicalSymbol(symbol))).join(", "));
+    }));
+    elements.planSymbolOptions.dataset.ready = "true";
+  }
+
+  function setPlanSymbols(symbols) {
+    renderPlanSymbolOptions();
+    const selected = new Set((symbols || []).map(canonicalSymbol));
+    const known = new Set(planSymbolChoices.map(canonicalSymbol));
+    $$('[data-plan-symbol]', elements.planSymbolOptions).forEach((input) => { input.checked = selected.has(canonicalSymbol(input.value)); });
+    selectValue(elements.planForm, "symbols", (symbols || []).filter((symbol) => !known.has(canonicalSymbol(symbol))).join(", "));
+  }
+
+  function selectedPlanSymbols() {
+    const selected = $$('[data-plan-symbol]:checked', elements.planSymbolOptions).map((input) => input.value);
+    return Array.from(new Map([...selected, ...commaList(formValue(elements.planForm, "symbols"))].map((symbol) => [canonicalSymbol(symbol), symbol])).values());
+  }
+
+  function syncPlanSymbolChoicesFromInput() {
+    const values = commaList(formValue(elements.planForm, "symbols"));
+    const known = new Set(planSymbolChoices.map(canonicalSymbol));
+    const selected = new Set(values.map(canonicalSymbol));
+    $$('[data-plan-symbol]', elements.planSymbolOptions).forEach((input) => { input.checked = selected.has(canonicalSymbol(input.value)); });
+    selectValue(elements.planForm, "symbols", values.filter((symbol) => !known.has(canonicalSymbol(symbol))).join(", "));
+  }
+
   function resetPlanEditor() {
     if (!elements.planForm) return;
+    renderPlanSymbolOptions();
     elements.planForm.reset();
     elements.planId.value = "";
     elements.planFormTitle.textContent = "Create execution plan";
     elements.planFormMode.textContent = "new";
     elements.savePlan.textContent = "Save plan";
+    setPlanSymbols(["BTC/USDT", "ETH/USDT"]);
     elements.planSteps.replaceChildren();
     addPlanStep({ action: "read_market_snapshot", name: "Read market", instructions: "Read the allowed market snapshot before deciding." });
     addPlanStep({ action: "read_crypto_news", name: "Read RSS", instructions: "Read configured RSS news as context, never as an order trigger." });
@@ -700,7 +749,7 @@
 
   function planPayloadFromForm() {
     const form = elements.planForm;
-    const payload = { name: formValue(form, "name"), description: formValue(form, "description"), objective: formValue(form, "objective"), strategy_version: formValue(form, "strategy_version"), pattern_id: formValue(form, "pattern_id"), mode: "paper", capital_quote: Number(formValue(form, "capital_quote")), max_trade_notional_quote: Number(formValue(form, "max_trade_notional_quote")), risk_per_trade_quote: Number(formValue(form, "risk_per_trade_quote")), max_daily_loss_quote: Number(formValue(form, "max_daily_loss_quote")), minimum_net_reward_risk_ratio: Number(formValue(form, "minimum_net_reward_risk_ratio")), exploratory_trades_enabled: form.elements.exploratory_trades_enabled.checked, exploratory_minimum_signal_score: Number(formValue(form, "exploratory_minimum_signal_score")), exploratory_risk_fraction: Number(formValue(form, "exploratory_risk_fraction")), max_open_operations: Number(formValue(form, "max_open_operations")), max_duration_minutes: Number(formValue(form, "max_duration_minutes")), target_operations: Number(formValue(form, "target_operations")), symbols: commaList(formValue(form, "symbols")), market_type: formValue(form, "market_type"), timeframe: formValue(form, "timeframe"), allowed_sides: checkedValues("allowed_sides", form), data_sources: checkedValues("data_sources", form), before_workflow_name: formValue(form, "before_workflow_name") || null, after_workflow_name: formValue(form, "after_workflow_name") || null, entry_rules: lines(formValue(form, "entry_rules")), exit_rules: lines(formValue(form, "exit_rules")), risk_rules: lines(formValue(form, "risk_rules")), evaluation_metrics: commaList(formValue(form, "evaluation_metrics")), steps: collectPlanSteps(), status: formValue(form, "status") };
+    const payload = { name: formValue(form, "name"), description: formValue(form, "description"), objective: formValue(form, "objective"), strategy_version: formValue(form, "strategy_version"), pattern_id: formValue(form, "pattern_id"), mode: "paper", capital_quote: Number(formValue(form, "capital_quote")), max_trade_notional_quote: Number(formValue(form, "max_trade_notional_quote")), risk_per_trade_quote: Number(formValue(form, "risk_per_trade_quote")), max_daily_loss_quote: Number(formValue(form, "max_daily_loss_quote")), minimum_net_reward_risk_ratio: Number(formValue(form, "minimum_net_reward_risk_ratio")), exploratory_trades_enabled: form.elements.exploratory_trades_enabled.checked, exploratory_minimum_signal_score: Number(formValue(form, "exploratory_minimum_signal_score")), exploratory_risk_fraction: Number(formValue(form, "exploratory_risk_fraction")), max_open_operations: Number(formValue(form, "max_open_operations")), max_duration_minutes: Number(formValue(form, "max_duration_minutes")), target_operations: Number(formValue(form, "target_operations")), symbols: selectedPlanSymbols(), market_type: formValue(form, "market_type"), timeframe: formValue(form, "timeframe"), allowed_sides: checkedValues("allowed_sides", form), data_sources: checkedValues("data_sources", form), before_workflow_name: formValue(form, "before_workflow_name") || null, after_workflow_name: formValue(form, "after_workflow_name") || null, entry_rules: lines(formValue(form, "entry_rules")), exit_rules: lines(formValue(form, "exit_rules")), risk_rules: lines(formValue(form, "risk_rules")), evaluation_metrics: commaList(formValue(form, "evaluation_metrics")), steps: collectPlanSteps(), status: formValue(form, "status") };
     const score = formValue(form, "minimum_signal_score");
     if (score) payload.minimum_signal_score = Number(score);
     return payload;
@@ -709,10 +758,11 @@
   function editPlan(id) {
     const plan = state.plans.find((item) => item.plan_id === id);
     if (!plan) return;
+    renderPlanSymbolOptions();
     elements.planForm.reset();
     elements.planId.value = plan.plan_id;
     Object.entries(plan).forEach(([name, value]) => { if (elements.planForm.elements[name] && !["plan_id", "steps", "account_id", "plan_id", "version", "created_at", "updated_at"].includes(name) && typeof value !== "object") selectValue(elements.planForm, name, value); });
-    selectValue(elements.planForm, "symbols", plan.symbols.join(", "));
+    setPlanSymbols(plan.symbols);
     selectValue(elements.planForm, "before_workflow_name", plan.before_workflow_name || "");
     selectValue(elements.planForm, "after_workflow_name", plan.after_workflow_name || "");
     selectValue(elements.planForm, "evaluation_metrics", plan.evaluation_metrics.join(", "));
@@ -735,6 +785,7 @@
     event.preventDefault();
     const planId = elements.planId.value.trim();
     const payload = planPayloadFromForm();
+    if (!payload.symbols.length) { setAlert("Select at least one symbol for the AI to use.", "error"); return; }
     if (!payload.allowed_sides.length || !payload.data_sources.length || !payload.steps.length) { setAlert("A plan needs sides, a data source and at least one step.", "error"); return; }
     setBusy(elements.savePlan, true, "Saving…");
     try {
@@ -784,11 +835,77 @@
 
   function useRunForEvaluation(runId, planName) { elements.strategyRunId.value = runId; elements.strategyPlanName.value = planName; showView("strategy"); $("#strategy-form").scrollIntoView({ behavior: "smooth", block: "center" }); setAlert("Run receipt attached to the evaluator.", "success"); }
 
+  const strategyReasonLabels = {
+    no_eligible_candidate: "No eligible setup met the strategy rules.",
+    operation_opened: "The best eligible setup passed the paper risk checks.",
+    risk_rejected: "A candidate existed, but the server risk engine rejected it.",
+    execution_plan_run_id_required: "The cycle needs a valid execution-plan run receipt.",
+    insufficient_closed_candles: "There were not enough closed candles to evaluate the indicators.",
+    indicators_unavailable: "The required technical indicators could not be calculated.",
+    derivatives_data_missing: "Derivatives data was unavailable or neutral.",
+    news_data_missing_or_neutral: "News data was unavailable or neutral.",
+    fundamental_proxy_not_available: "No external event context was available.",
+    long_technical_setup_not_eligible: "The long technical setup was not eligible.",
+    short_technical_setup_not_eligible: "The short technical setup was not eligible.",
+    long_score_below_exploratory_threshold: "The long score was below the exploratory threshold.",
+    short_score_below_exploratory_threshold: "The short score was below the exploratory threshold.",
+    exploratory_trades_disabled: "Exploratory trades are disabled for this plan.",
+    spread_above_limit: "The market spread was above the configured limit.",
+    execution_plan_run_not_active: "The execution-plan run is no longer active.",
+    execution_plan_run_expired: "The execution-plan run expired before the cycle completed.",
+    execution_plan_run_not_found: "The execution-plan run could not be found.",
+    strategy_market_data_unavailable: "No usable market snapshot was available.",
+  };
+
+  function strategyReasonLabel(value) {
+    const key = String(value || "");
+    if (strategyReasonLabels[key]) return strategyReasonLabels[key];
+    const readable = key.replaceAll("_", " ").replace(/^./, (character) => character.toUpperCase());
+    return readable || "The strategy did not open a paper operation.";
+  }
+
+  function cycleDecisionReasons(record) {
+    const reasons = [];
+    if (record.reason) reasons.push(strategyReasonLabel(record.reason));
+    const evaluation = record.evaluation || {};
+    if (evaluation.market_regime) reasons.push("Market regime: " + strategyReasonLabel(evaluation.market_regime));
+    (evaluation.rejection_reasons || []).forEach((reason) => reasons.push(strategyReasonLabel(reason)));
+    (evaluation.data_quality || []).forEach((reason) => reasons.push("Data quality: " + strategyReasonLabel(reason)));
+    if (record.risk_check && (record.risk_check.reasons || []).length) {
+      record.risk_check.reasons.forEach((reason) => reasons.push("Risk: " + strategyReasonLabel(reason)));
+    }
+    if (!reasons.length) reasons.push("The cycle completed without opening a paper operation.");
+    return Array.from(new Set(reasons));
+  }
+
+  function renderStrategyCycles() {
+    const cycles = state.strategyCycles || [];
+    elements.cycleCount.textContent = cycles.length;
+    if (!cycles.length) {
+      elements.strategyCycleHistory.innerHTML = '<div class="empty-state compact"><span class="empty-glyph">◌</span><strong>No cycles recorded</strong><p>Run a strategy cycle to keep its decision evidence.</p></div>';
+      return;
+    }
+    elements.strategyCycleHistory.innerHTML = cycles.map((cycle) => {
+      const opened = Boolean(cycle.executed);
+      const reasons = opened ? [] : cycleDecisionReasons(cycle);
+      const reasonMarkup = reasons.length ? '<ul class="cycle-reasons">' + reasons.map((reason) => "<li>" + escapeHtml(reason) + "</li>").join("") + "</ul>" : "";
+      const operation = cycle.operation_id ? '<span class="cycle-operation">' + escapeHtml(cycle.operation_id) + "</span>" : "";
+      return '<article class="cycle-record ' + (opened ? "is-opened" : "is-skipped") + '"><div class="cycle-record-top"><div><strong>' + escapeHtml(opened ? "Paper operation opened" : "No operation opened") + '</strong><small>' + escapeHtml(cycle.plan_name) + " · " + escapeHtml(cycle.symbol) + " · " + escapeHtml(formatDate(cycle.created_at)) + '</small></div><span class="status-badge ' + (opened ? "status-good" : "status-muted") + '">' + escapeHtml(opened ? "opened" : "skipped") + '</span></div>' + reasonMarkup + (operation ? '<div class="cycle-record-meta">' + operation + '</div>' : "") + '<details><summary>Cycle evidence</summary><pre>' + escapeHtml(JSON.stringify(cycle, null, 2)) + "</pre></details></article>";
+    }).join("");
+  }
+
+  async function refreshStrategyCycles() {
+    state.strategyCycles = await api("/api/v1/strategy/cycles?limit=100");
+    renderStrategyCycles();
+  }
+
   function renderStrategyResult(result) {
     if (result && Object.prototype.hasOwnProperty.call(result, "executed")) {
       const evaluation = result.evaluation;
       elements.strategyOutput.className = "strategy-output";
-      elements.strategyOutput.innerHTML = '<div class="result-summary"><strong class="' + (result.executed ? "text-good" : "text-amber") + '">' + (result.executed ? "paper cycle executed" : "cycle stopped") + '</strong><span>' + escapeHtml(result.reason || (result.operation && result.operation.operation_id) || "") + '</span></div>' + (evaluation ? renderEvaluationMarkup(evaluation) : "") + '<details><summary>Cycle response</summary><pre>' + escapeHtml(JSON.stringify(result, null, 2)) + "</pre></details>";
+      const decision = result.executed ? "Paper cycle executed" : "No paper operation opened";
+      const evidence = result.executed ? "" : '<div class="cycle-decision no-trade"><strong>Why this cycle stayed flat</strong><ul class="cycle-reasons">' + cycleDecisionReasons(result).map((reason) => "<li>" + escapeHtml(reason) + "</li>").join("") + "</ul><p>This decision is saved in cycle history.</p></div>";
+      elements.strategyOutput.innerHTML = '<div class="result-summary"><strong class="' + (result.executed ? "text-good" : "text-amber") + '">' + decision + '</strong><span>' + escapeHtml(result.reason || (result.operation && result.operation.operation_id) || "") + '</span></div>' + evidence + (evaluation ? renderEvaluationMarkup(evaluation) : "") + '<details><summary>Cycle response</summary><pre>' + escapeHtml(JSON.stringify(result, null, 2)) + "</pre></details>";
       return;
     }
     elements.strategyOutput.className = "strategy-output";
@@ -821,7 +938,12 @@
     const button = $("#run-cycle");
     const params = new URLSearchParams({ plan_name: formValue(form, "plan_name"), symbol: formValue(form, "symbol"), execution_plan_run_id: formValue(form, "execution_plan_run_id") });
     setBusy(button, true, "Cycling…");
-    try { renderStrategyResult(await api("/api/v1/strategy/cycle?" + params.toString(), { method: "POST" })); setAlert("Strategy cycle completed.", "success"); }
+    try {
+      const result = await api("/api/v1/strategy/cycle?" + params.toString(), { method: "POST" });
+      renderStrategyResult(result);
+      await refreshStrategyCycles();
+      setAlert("Strategy cycle completed.", "success");
+    }
     catch (error) { renderResultError(elements.strategyOutput, error); setAlert(error.message, "error"); }
     finally { setBusy(button, false); }
   }
@@ -1170,6 +1292,7 @@
   $$('[data-refresh-workspace]').forEach((button) => button.addEventListener("click", refreshWorkspace));
   $$('[data-refresh-health]').forEach((button) => button.addEventListener("click", refreshHealth));
   $$('[data-refresh-operations]').forEach((button) => button.addEventListener("click", () => refreshOperations().then(() => setAlert("Operations refreshed.", "success")).catch((error) => setAlert(error.message, "error"))));
+  $$('[data-refresh-cycles]').forEach((button) => button.addEventListener("click", () => refreshStrategyCycles().then(() => setAlert("Cycle history refreshed.", "success")).catch((error) => setAlert(error.message, "error"))));
   elements.mobileNavToggle.addEventListener("click", () => { const open = document.body.classList.toggle("nav-open"); elements.mobileNavToggle.setAttribute("aria-expanded", String(open)); });
   window.addEventListener("hashchange", () => { if (state.token) showView(window.location.hash.slice(1) || "overview", false); });
 
@@ -1180,6 +1303,7 @@
   $("#x-form").addEventListener("submit", (event) => { event.preventDefault(); submitIntelligence(event.currentTarget, "/api/v1/signals/x", $("#x-output"), (response, target) => renderSignalResponse(response, target, "X ingestion is disabled by default.")); });
 
   elements.planForm.addEventListener("submit", savePlan);
+  elements.planForm.elements.symbols.addEventListener("input", syncPlanSymbolChoicesFromInput);
   $("#new-plan").addEventListener("click", () => { resetPlanEditor(); showView("strategy"); $("#plan-editor").scrollIntoView({ behavior: "smooth", block: "start" }); });
   $("#reset-plan").addEventListener("click", resetPlanEditor);
   $("#add-plan-step").addEventListener("click", () => addPlanStep());

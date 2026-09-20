@@ -41,6 +41,7 @@ from .models import (
     PostmortemInput,
     RiskCheck,
     SignalResponse,
+    StrategyCycleRecord,
     StrategyEvaluation,
     TradeProposal,
     Workflow,
@@ -378,6 +379,20 @@ def create_app(settings: Settings | None = None, service: TradingService | None 
         ),
     ) -> dict[str, object]:
         return await service.run_strategy_cycle(plan_name, symbol, execution_plan_run_id)
+
+    @app.get("/api/v1/strategy/cycles", response_model=list[StrategyCycleRecord])
+    def list_strategy_cycles(
+        limit: int = Query(default=100, ge=1, le=500),
+        plan_name: str | None = Query(default=None, min_length=1, max_length=120),
+        execution_plan_run_id: str | None = Query(
+            default=None, min_length=10, max_length=100, pattern=r"^epr_[a-z0-9]+$"
+        ),
+    ) -> list[StrategyCycleRecord]:
+        return service.list_strategy_cycles(
+            limit,
+            plan_name=plan_name,
+            execution_plan_run_id=execution_plan_run_id,
+        )
 
     @app.get("/api/v1/signals/x", response_model=SignalResponse)
     async def x_posts(

@@ -21,5 +21,12 @@ def test_ui_is_public_and_serves_same_origin_assets(tmp_path) -> None:
     assert "sessionStorage" in script.text
     assert 'stepSelect(\n          "Symbol or context variable"' in script.text
     assert "Use operation symbol ($context.symbol)" in script.text
+    assert "plan-symbol-options" in page.text
+    assert "selectedPlanSymbols" in script.text
+    assert '"ZEC/USDT", "ZEC/USDT"' in script.text
+    for symbol in ("LTC", "LINK", "AVAX", "DOT", "UNI", "AAVE", "TRX"):
+        assert f'"{symbol}/USDT", "{symbol}/USDT"' in script.text
+    assert "Cycle history" in page.text
+    assert "/api/v1/strategy/cycles" in script.text
     assert styles.status_code == 200
     assert protected.status_code == 401

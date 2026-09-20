@@ -18,6 +18,7 @@ from .models import (
     OperationRecord,
     OperationStatus,
     PositionReview,
+    StrategyCycleRecord,
     Workflow,
     utc_now,
 )
@@ -101,6 +102,7 @@ class SQLiteStore:
             self._migrate_lessons(connection)
             self._migrate_execution_plan_provenance(connection)
             self._migrate_position_reviews(connection)
+            self._migrate_strategy_cycles(connection)
 
     @staticmethod
     def _columns(connection: sqlite3.Connection, table: str) -> set[str]:
@@ -266,6 +268,30 @@ class SQLiteStore:
             """
         )
 
+    @staticmethod
+    def _migrate_strategy_cycles(connection: sqlite3.Connection) -> None:
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS strategy_cycles (
+                cycle_id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                plan_name TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                execution_plan_run_id TEXT,
+                executed INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                operation_id TEXT,
+                created_at TEXT NOT NULL,
+                snapshot_json TEXT NOT NULL,
+                FOREIGN KEY(account_id) REFERENCES accounts(account_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_strategy_cycles_account
+                ON strategy_cycles(account_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_strategy_cycles_run
+                ON strategy_cycles(account_id, execution_plan_run_id, created_at DESC);
+            """
+        )
+
     def create_account(self, account: Account, token_hash: str) -> None:
         with self._lock, self._connect() as connection:
             connection.execute(
@@ -380,6 +406,67 @@ class SQLiteStore:
                 (account_id, limit),
             ).fetchall()
         return [OperationRecord.model_validate_json(row["snapshot_json"]) for row in rows]
+
+    def save_strategy_cycle(self, cycle: StrategyCycleRecord) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO strategy_cycles(
+                    cycle_id, account_id, plan_name, symbol, execution_plan_run_id,
+                    executed, reason, operation_id, created_at, snapshot_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(cycle_id) DO UPDATE SET
+                    plan_name = excluded.plan_name,
+                    symbol = excluded.symbol,
+                    execution_plan_run_id = excluded.execution_plan_run_id,
+                    executed = excluded.executed,
+                    reason = excluded.reason,
+                    operation_id = excluded.operation_id,
+                    created_at = excluded.created_at,
+                    snapshot_json = excluded.snapshot_json
+                """,
+                (
+                    cycle.cycle_id,
+                    cycle.account_id,
+                    cycle.plan_name,
+                    cycle.symbol,
+                    cycle.execution_plan_run_id,
+                    int(cycle.executed),
+                    cycle.reason,
+                    cycle.operation_id,
+                    cycle.created_at.isoformat(),
+                    cycle.model_dump_json(),
+                ),
+            )
+
+    def list_strategy_cycles(
+        self,
+        limit: int = 100,
+        *,
+        account_id: str = DEFAULT_ACCOUNT_ID,
+        plan_name: str | None = None,
+        execution_plan_run_id: str | None = None,
+    ) -> list[StrategyCycleRecord]:
+        limit = max(1, min(limit, 500))
+        clauses = ["account_id = ?"]
+        params: list[str | int] = [account_id]
+        if plan_name:
+            clauses.append("plan_name = ? COLLATE NOCASE")
+            params.append(plan_name)
+        if execution_plan_run_id:
+            clauses.append("execution_plan_run_id = ?")
+            params.append(execution_plan_run_id)
+        params.append(limit)
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT snapshot_json FROM strategy_cycles
+                WHERE """
+                + " AND ".join(clauses)
+                + " ORDER BY created_at DESC LIMIT ?",
+                params,
+            ).fetchall()
+        return [StrategyCycleRecord.model_validate_json(row["snapshot_json"]) for row in rows]
 
     def count_open_operations(self, account_id: str = DEFAULT_ACCOUNT_ID) -> int:
         with self._lock, self._connect() as connection:

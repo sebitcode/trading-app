@@ -44,6 +44,11 @@ def build_mcp_server(service: TradingService) -> MCPServer:
             "phase before proposing and their after_operation phase after recording an outcome. "
             "The authenticated account may also define named execution plans. Read an active "
             "plan and run its preflight before following its ordered paper-only steps. "
+            "The symbols returned by get_execution_plan_symbols are the exact allowlist selected "
+            "by the user in the UI; never substitute symbols outside that selection. "
+            "If the user directly asks to change that target list, use "
+            "update_execution_plan_symbols with the exact requested symbols; do not silently "
+            "add assets or replace the rest of the plan. "
             "A plan run returns a durable run_id and covers every symbol in the plan; pass "
             "that run_id to each exact-symbol market, news, positioning, pattern, or lesson "
             "read, using the plan market type/timeframe and pattern id where applicable, "
@@ -192,8 +197,37 @@ def build_mcp_server(service: TradingService) -> MCPServer:
         return [jsonable(plan) for plan in service.list_execution_plans(limit)]
 
     @mcp.tool()
+    def get_execution_plan_symbols(plan_name: str) -> dict[str, object]:
+        """Return the exact symbol allowlist selected by the user for a paper plan."""
+
+        plan = service.get_execution_plan_by_name(plan_name)
+        return {
+            "plan_name": plan.name,
+            "plan_version": plan.version,
+            "status": plan.status.value,
+            "symbols": plan.symbols,
+            "market_type": plan.market_type.value,
+            "timeframe": plan.timeframe,
+            "selection_source": "user_execution_plan",
+        }
+
+    @mcp.tool()
+    def update_execution_plan_symbols(
+        plan_name: str, symbols: list[str]
+    ) -> dict[str, object]:
+        """Set the user's target symbols and return the new version of the paper plan."""
+
+        try:
+            return {
+                "saved": True,
+                "plan": jsonable(service.update_execution_plan_symbols(plan_name, symbols)),
+            }
+        except (ConflictError, NotFoundError, ValueError) as exc:
+            return {"saved": False, "error": str(exc)}
+
+    @mcp.tool()
     def get_execution_plan(plan_name: str) -> dict[str, object]:
-        """Read a named paper-only execution plan and its ordered agent steps."""
+        """Read a named plan, including the symbols selected by the user and its agent steps."""
 
         return jsonable(service.get_execution_plan_by_name(plan_name))
 
@@ -237,7 +271,7 @@ def build_mcp_server(service: TradingService) -> MCPServer:
         duration_minutes: int | None = None,
         target_operations: int | None = None,
     ) -> dict[str, object]:
-        """Run plan preflight and its before-workflow without silently placing a trade."""
+        """Run plan preflight; an omitted symbol uses the first user-selected symbol."""
 
         result = await service.run_execution_plan(
             ExecutionPlanRunRequest(

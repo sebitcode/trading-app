@@ -813,6 +813,7 @@ a {
 .next-panel,
 .command-panel,
 .strategy-evaluator,
+.strategy-cycle-history,
 .plan-library,
 .plan-run-panel,
 .workflow-library,
@@ -1689,6 +1690,33 @@ pre {
   gap: 1rem;
 }
 
+.symbol-selection {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.symbol-choice {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.55rem 0.8rem;
+}
+
+.symbol-choice legend {
+  float: none;
+  width: auto;
+  grid-column: 1 / -1;
+}
+
+.symbol-choice label {
+  min-width: 0;
+}
+
+.field-note {
+  margin: 0;
+  color: var(--faint);
+  font-size: 0.61rem;
+}
+
 .toggle-field {
   display: flex !important;
   grid-template-columns: none;
@@ -2163,6 +2191,82 @@ pre {
   margin-top: 1.2rem;
   padding-top: 1rem;
   border-top: 1px solid var(--line);
+}
+
+.strategy-cycle-history {
+  margin-top: 1rem;
+}
+
+.panel-intro {
+  max-width: 38rem;
+  margin: -0.45rem 0 1rem;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.cycle-history {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.cycle-record {
+  padding: 0.78rem 0.85rem;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--amber);
+  background: rgba(255, 176, 111, 0.035);
+}
+
+.cycle-record.is-opened {
+  border-left-color: var(--lime);
+  background: rgba(201, 243, 107, 0.035);
+}
+
+.cycle-record-top {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.cycle-record-top strong,
+.cycle-record-top small {
+  display: block;
+}
+
+.cycle-record-top strong {
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.cycle-record-top small,
+.cycle-record-meta {
+  margin-top: 0.28rem;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 0.53rem;
+}
+
+.cycle-reasons {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.65rem 0 0;
+  padding-left: 1rem;
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.cycle-decision {
+  margin-top: 0.85rem;
+  padding: 0.75rem;
+  border-left: 2px solid var(--amber);
+  background: rgba(255, 176, 111, 0.07);
+}
+
+.cycle-decision p {
+  margin: 0.55rem 0 0;
+  color: var(--faint);
+  font-size: 0.59rem;
 }
 
 .form-surface {
@@ -2704,6 +2808,15 @@ pre {
   .view-stamp {
     display: inline-block;
     margin-top: 0.9rem;
+  }
+
+  .cycle-record-top {
+    display: block;
+  }
+
+  .cycle-record-top .status-badge {
+    display: inline-block;
+    margin-top: 0.55rem;
   }
 
   .stat-strip {
